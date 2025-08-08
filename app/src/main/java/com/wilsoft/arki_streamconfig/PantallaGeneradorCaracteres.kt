@@ -1167,6 +1167,21 @@ private fun ExpandableEditorCard(
 
             // Contenido expandible
             if (expanded) {
+                // 🆕 BOTÓN AL AIRE DIRECTO (NUEVO)
+                Button(
+                    onClick = onAlAireDirecto, // ← NUEVO CALLBACK
+                    modifier = Modifier.weight(1f),
+                    enabled = invitadoNombre.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiary
+                    )
+                ) {
+                    Icon(Icons.Default.FlashOn, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("AL AIRE")
+                }
+
+
                 // [MANTENER todos los campos existentes: Nombre, Rol, Tema, Lugar...]
                 // Campo Nombre con botón de opciones
                 Row(
@@ -1316,19 +1331,6 @@ private fun ExpandableEditorCard(
                             Text("Nuevo")
                         }
 
-                        // 🆕 BOTÓN AL AIRE DIRECTO (NUEVO)
-                        Button(
-                            onClick = onAlAireDirecto, // ← NUEVO CALLBACK
-                            modifier = Modifier.weight(1f),
-                            enabled = invitadoNombre.isNotBlank(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.tertiary
-                            )
-                        ) {
-                            Icon(Icons.Default.FlashOn, contentDescription = null)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("AL AIRE")
-                        }
 
 
                         Button(
