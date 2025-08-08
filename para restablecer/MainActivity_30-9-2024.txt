@@ -1,0 +1,383 @@
+package com.wilsoft.arki_streamconfig
+
+import com.wilsoft.arki_streamconfig.ui.theme.Arki_StreamConfigTheme
+import androidx.compose.ui.text.AnnotatedString
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+//import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+//import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.unit.sp // Para el tamaño de fuente
+import androidx.compose.ui.graphics.Color // Para el color
+import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Person
+
+class MainActivity : ComponentActivity() {
+    private lateinit var auth: FirebaseAuth  // Instancia de FirebaseAuth
+    private val firebaseRepository = FirebaseRepository() // Crear una instancia de FirebaseRepository
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // Inicializar Firebase Auth
+        auth = FirebaseAuth.getInstance()
+
+        // Autenticación anónima
+        signInAnonymously()
+
+        setContent {
+            Arki_StreamConfigTheme {
+                val navController = rememberNavController()  // Controlador de navegación
+                NavHostSetup(navController = navController, firebaseRepository = firebaseRepository)
+            }
+        }
+
+    }
+
+    // Función para autenticar anónimamente
+    private fun signInAnonymously() {
+        auth.signInAnonymously()
+            .addOnCompleteListener(this) { task ->
+                if (task.isSuccessful) {
+                    // Autenticación exitosa
+                    Log.d("FirebaseAuth", "Autenticación anónima exitosa")
+                } else {
+                    // Error en la autenticación
+                    Log.e("FirebaseAuth", "Error en la autenticación anónima", task.exception)
+                }
+            }
+    }
+}
+
+
+
+@Composable
+fun TransmissionField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    isReadRemotely: Boolean,
+    onCopy: () -> Unit,
+    onPaste: () -> Unit,
+    onClear: () -> Unit, // Agrega esta línea para la función de limpiar
+    onSave: (String) -> Unit //Agregamos función para guardar en Firebase
+) {
+    val clipboardManager = LocalClipboardManager.current //Administrador del portapapeles
+    var isSaveEnabled by remember { mutableStateOf(false) } //LINEA NUEVA: Controlar si el botón Guardar está habilitado
+
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text(text = label, style = MaterialTheme.typography.bodyLarge)
+
+        TextField(
+            value = value,
+            onValueChange = {
+                onValueChange(it)
+                isSaveEnabled = true //LINEA NUEVA: Habilitar el botón "Guardar" cuando se modifica el texto
+            },
+            label = { Text(label) },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = onCopy, modifier = Modifier.padding(end = 8.dp)) {
+                Text("Copiar")
+            }
+
+            // Modificamos el botón Pegar
+            Button(onClick = {
+                val clipboardText = clipboardManager.getText()?.text //LINEA NUEVA: Obtener texto del portapapeles
+                if (!clipboardText.isNullOrEmpty()) {
+                    onPaste()  //Pegar el texto en la caja de texto
+                    onSave(clipboardText)  //Guardar el texto en Firebase
+                    isSaveEnabled = false //LINEA NUEVA: Deshabilitar el botón "Guardar" después de pegar y guardar
+                }
+            }, modifier = Modifier.padding(end = 8.dp)) {
+                Text("Pegar")
+            }
+
+            // Botón de limpiar
+            Button(onClick = onClear, modifier = Modifier.padding(end = 8.dp)) {
+                Text("X") // Usa "X" o cualquier texto que prefieras
+            }
+
+            // Botón Guardar con ícono
+            Button(
+                onClick = { onSave(value); isSaveEnabled = false }, // Guardar el valor y deshabilitar el botón
+                enabled = isSaveEnabled, // Controlar si el botón está habilitado
+                modifier = Modifier
+                    .padding(end = 8.dp)
+                    .size(48.dp) // Ajuste para tamaño compacto
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Save, // Usar el ícono de "guardar" de Material Icons
+                    contentDescription = "Guardar",
+                    modifier = Modifier.size(24.dp) // Tamaño del ícono dentro del botón
+                )
+            }
+
+
+            // Icono para indicar si ha sido leído remotamente
+            Image(
+                painter = if (isReadRemotely) painterResource(id = R.drawable.icon_read)
+                else painterResource(id = R.drawable.icon_unread),
+                contentDescription = "Leído remotamente",
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+}
+
+
+@Composable
+fun TransmissionScreen(
+    firebaseRepository: FirebaseRepository, // Solo mantienes este parámetro
+    navController: NavHostController  // Añadimos el controlador de navegación
+) {
+    var transmissionKey by remember { mutableStateOf("") }
+    var rtpServer by remember { mutableStateOf("") }
+    var lowerThirdLink by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+
+    var isKeyReadRemotely by remember { mutableStateOf(false) }
+    var isDescriptionRead by remember { mutableStateOf(false) }
+    var isServerRead by remember { mutableStateOf(false) }
+    var isTitleRead by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        firebaseRepository.loadStreamData(FirebaseRepository.basePath, onSuccess = { data ->
+            Log.d("FirebaseSuccess", "Datos cargados: $data")
+
+            // Asignación de valores obtenidos de Firebase a las variables de estado
+            transmissionKey = data["Clave"] as? String ?: ""
+            description = data["Descripcion"] as? String ?: ""
+            lowerThirdLink = data["Lower1"] as? String ?: ""
+            rtpServer = data["Servidor"] as? String ?: ""
+            title = data["Titulo"] as? String ?: ""
+
+            // Asignar el estado de "leído" a las variables
+            isKeyReadRemotely = (data["Clave_Estado"] as? Long ?: 0L) == 1L
+            isDescriptionRead = (data["Descripcion_Estado"] as? Long ?: 0L) == 1L
+            isServerRead = (data["Servidor_Estado"] as? Long ?: 0L) == 1L
+            isTitleRead = (data["Titulo_Estado"] as? Long ?: 0L) == 1L
+        }, onFailure = { exception ->
+            // Manejo de errores
+            Log.e("FirebaseError", "Error al cargar datos: ${exception.message}")
+        })
+    }
+
+
+
+    val clipboardManager = LocalClipboardManager.current
+
+    // Funciones para copiar texto al portapapeles
+    val onCopyKey = { clipboardManager.setText(AnnotatedString(transmissionKey)) }
+    val onPasteKey = { transmissionKey = clipboardManager.getText()?.text ?: "" }
+    val onClearKey = { transmissionKey = "" } // Función para limpiar
+
+    val onCopyRTPM = { clipboardManager.setText(AnnotatedString(rtpServer)) }
+    val onPasteRTPM = { rtpServer = clipboardManager.getText()?.text ?: "" }
+    val onClearRTPM = { rtpServer = "" } // Función para limpiar
+
+    val onCopyLowerThird = { clipboardManager.setText(AnnotatedString(lowerThirdLink)) }
+    val onPasteLowerThird = { lowerThirdLink = clipboardManager.getText()?.text ?: "" }
+    val onClearLowerThird = { lowerThirdLink = "" } // Función para limpiar
+
+    // Funciones para título
+    val onCopyTitle = { clipboardManager.setText(AnnotatedString(title)) }
+    val onPasteTitle = { title = clipboardManager.getText()?.text ?: "" }
+    val onClearTitle = { title = "" } // Función para limpiar
+
+    // Funciones para descripción
+    val onCopyDescription = { clipboardManager.setText(AnnotatedString(description)) }
+    val onPasteDescription = { description = clipboardManager.getText()?.text ?: "" }
+    val onClearDescription = { description = "" } // Función para limpiar
+
+    FirebaseRepository.basePath = "CLAVE_STREAM_FB/STREAM_CONFIGURACION"
+
+
+    // Envuelve la Column en un Scroll
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()) // Añadir desplazamiento
+    ) {
+        // Sección "Clave de transmisión"
+        TransmissionField(
+            label = "Clave de transmisión",
+            value = transmissionKey,
+            onValueChange = { transmissionKey = it },
+            isReadRemotely = isKeyReadRemotely,
+            onCopy = onCopyKey,
+            onPaste = onPasteKey,
+            onClear = onClearKey,
+            onSave = { newValue -> //LINEA NUEVA: Guardar en Firebase cuando se pega el texto
+                firebaseRepository.saveData(FirebaseRepository.basePath, mapOf("Clave" to newValue), onSuccess = {
+                    Log.d("Firebase", "Clave guardada exitosamente") //LINEA NUEVA: Log de éxito
+                }, onFailure = { exception ->
+                    Log.e("Firebase", "Error al guardar Clave", exception) //LINEA NUEVA: Log de error
+                })
+            }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Sección "Servidor RTPM"
+        TransmissionField(
+            label = "Servidor RTPM",
+            value = rtpServer,
+            onValueChange = { rtpServer = it },
+            isReadRemotely = false,
+            onCopy = onCopyRTPM,
+            onPaste = onPasteRTPM,
+            onClear = onClearRTPM, // Pasar la función de limpiar
+            onSave = { newValue -> //LINEA NUEVA: Guardar en Firebase cuando se pega el texto
+                firebaseRepository.saveData(FirebaseRepository.basePath, mapOf("Servidor" to newValue), onSuccess = {
+                    Log.d("Firebase", "Servidor guardado exitosamente") //LINEA NUEVA: Log de éxito
+                }, onFailure = { exception ->
+                    Log.e("Firebase", "Error al guardar Servidor", exception) //LINEA NUEVA: Log de error
+                })
+            }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Sección "Link de Lower Thirds"
+        TransmissionField(
+            label = "Página de Lower Thirds",
+            value = lowerThirdLink,
+            onValueChange = { lowerThirdLink = it },
+            isReadRemotely = false,
+            onCopy = onCopyLowerThird,
+            onPaste = onPasteLowerThird,
+            onClear = onClearLowerThird, // Pasar la función de limpiar
+            onSave = { newValue -> //LINEA NUEVA: Guardar en Firebase cuando se pega el texto
+                firebaseRepository.saveData(FirebaseRepository.basePath, mapOf("Lower1" to newValue), onSuccess = {
+                    Log.d("Firebase", "Lower Third guardado exitosamente") //LINEA NUEVA: Log de éxito
+                }, onFailure = { exception ->
+                    Log.e("Firebase", "Error al guardar Lower Third", exception) //LINEA NUEVA: Log de error
+                })
+            }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Sección "Título"
+        TransmissionField(
+            label = "Título de la Transmisión",
+            value = title,
+            onValueChange = { title = it },
+            isReadRemotely = false,
+            onCopy = onCopyTitle, /*{ /* Copiar acción */ },*/
+            onPaste = onPasteTitle,/*{ /* Pegar acción */ },*/
+            onClear = onClearTitle, /* { title = "" } // Función de limpiar*/
+            onSave = { newValue -> //LINEA NUEVA: Guardar en Firebase cuando se pega el texto
+                firebaseRepository.saveData(FirebaseRepository.basePath, mapOf("Titulo" to newValue), onSuccess = {
+                    Log.d("Firebase", "Título guardado exitosamente") //LINEA NUEVA: Log de éxito
+                }, onFailure = { exception ->
+                    Log.e("Firebase", "Error al guardar Título", exception) //LINEA NUEVA: Log de error
+                })
+            }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Sección "Descripción"
+        TransmissionField(
+            label = "Descripción de la Transmisión", // LINEA NUEVA: Falta el parámetro `label`
+            value = description,
+            onValueChange = { description = it },
+            isReadRemotely = isDescriptionRead,
+            onCopy = onCopyDescription,
+            onPaste = onPasteDescription,
+            onClear = onClearDescription,
+            onSave = { newValue -> //LINEA NUEVA: Guardar en Firebase cuando se pega el texto
+                firebaseRepository.saveData(FirebaseRepository.basePath, mapOf("Descripcion" to newValue), onSuccess = {
+                    Log.d("Firebase", "Descripción guardada exitosamente") //LINEA NUEVA: Log de éxito
+                }, onFailure = { exception ->
+                    Log.e("Firebase", "Error al guardar Descripción", exception) //LINEA NUEVA: Log de error
+                })
+            }
+        ) // Aquí cerramos la llamada a `TransmissionField` correctamente
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Botón para gráficos dinámicos con icono y texto
+        Button(
+            onClick = { /* Navegar a PantallaGraficos */ },
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+            modifier = Modifier.height(54.dp)
+        ) {
+            Icon(imageVector = Icons.Default.BarChart, contentDescription = "Gráficos")
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = "Control de Gráficos Dinámicos", fontSize = 18.sp)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Nuevo botón para perfiles con icono y texto
+        Button(
+            onClick = { /* Navegar a PantallaPerfiles */ },
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+            modifier = Modifier.height(54.dp)
+        ) {
+            Icon(imageVector = Icons.Default.Person, contentDescription = "Perfiles") // Icono de perfiles
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = "Perfiles", fontSize = 18.sp) // Texto del botón
+        }
+
+
+        // Espacio en blanco del tamaño del alto de la caja de la descripción * 2
+        Spacer(modifier = Modifier.height(240.dp)) // 120 dp * 2
+    }
+}
+
+
+// Función de navegación hacia PantallaGraficos
+@Composable
+fun PantallaGraficos() {
+    // Contenido de la pantalla de gráficos dinámicos
+    Text("Pantalla de Gráficos Dinámicos")
+}
+
+// Función de navegación hacia PantallaPerfiles
+@Composable
+fun PantallaPerfiles() {
+    // Contenido de la pantalla de perfiles
+    Text("Pantalla de Perfiles")
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun PreviewTransmissionScreen() {
+    val fakeFirebaseRepository = FirebaseRepository() // Usamos una instancia real pero no conectamos a Firebase
+
+    Arki_StreamConfigTheme {
+        val navController = rememberNavController() // Agregamos NavController para la navegación
+        NavHostSetup(navController = navController, firebaseRepository = fakeFirebaseRepository)
+    }
+}

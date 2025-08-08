@@ -1,0 +1,47 @@
+package com.wilsoft.arki_streamconfig
+
+import com.google.firebase.database.ktx.database // Para Firebase Realtime Database
+import com.google.firebase.database.DatabaseReference // Para referenciar la base de datos
+import com.google.firebase.database.DataSnapshot // Para el uso de DataSnapshot en las lambdas
+import com.google.firebase.ktx.Firebase // Para la instancia global de Firebase
+
+
+
+
+class FirebaseRepository {
+    companion object FirebasePaths {
+        var basePath = "CLAVE_STREAM_FB/STREAM_CONFIGURACION" // Ruta base global que puedes cambiar
+    }
+
+    private val db: DatabaseReference = Firebase.database.reference // Inicializar Realtime Database correctamente
+
+    // Función para cargar los datos desde la ruta "CLAVE_STREAM_FB" en Realtime Database
+    fun loadStreamData(path: String, onSuccess: (Map<String, Any>) -> Unit, onFailure: (Exception) -> Unit) {
+        db.child(path) // Usamos la ruta dinámica
+            .get()
+            .addOnSuccessListener { dataSnapshot ->
+                if (dataSnapshot.exists()) {
+                    val data = dataSnapshot.value as? Map<String, Any> ?: emptyMap()
+                    onSuccess(data)
+                } else {
+                    onFailure(Exception("No se encontraron datos en $path."))
+                }
+            }
+            .addOnFailureListener { exception ->
+                onFailure(exception)
+            }
+    }
+
+
+    // Función para guardar datos en Firebase
+    fun saveData(nodePath: String, data: Map<String, Any>, onSuccess: () -> Unit, onFailure: (Exception) -> Unit) {
+        db.child(nodePath) // Usamos `child()` para especificar la ruta en Realtime Database
+            .updateChildren(data) // `updateChildren()` actualiza los datos sin eliminar los existentes
+            .addOnSuccessListener {
+                onSuccess() // Llamamos a la función de éxito si todo va bien
+            }
+            .addOnFailureListener { exception ->
+                onFailure(exception) // Llamamos a la función de error si algo falla
+            }
+    }
+}

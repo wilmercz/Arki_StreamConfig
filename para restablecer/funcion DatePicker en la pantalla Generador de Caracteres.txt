@@ -1,0 +1,27 @@
+// Composable para el selector de fecha (DatePicker)
+@Composable
+fun DatePicker(initialDate: Calendar, onDateSelected: (Calendar) -> Unit) {
+    val context = LocalContext.current
+    val year = initialDate.get(Calendar.YEAR)
+    val month = initialDate.get(Calendar.MONTH)
+    val day = initialDate.get(Calendar.DAY_OF_MONTH)
+
+    var showDialog by remember { mutableStateOf(false) }
+
+    if (showDialog) {
+        DatePickerDialog(
+            context,
+            { _, selectedYear, selectedMonth, selectedDay ->
+                val selectedDate = Calendar.getInstance()
+                selectedDate.set(selectedYear, selectedMonth, selectedDay)
+                onDateSelected(selectedDate)
+                showDialog = false
+            },
+            year, month, day
+        ).show()
+    }
+
+    Button(onClick = { showDialog = true }) {
+        Text(text = "Seleccionar Fecha")
+    }
+}

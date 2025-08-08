@@ -1,0 +1,106 @@
+{
+  "project_info": {
+    "project_number": "829954736380",
+    "firebase_url": "https://arki-service-autoridades.firebaseio.com",
+    "project_id": "arki-service-autoridades",
+    "storage_bucket": "arki-service-autoridades.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:829954736380:android:9c31d70eb8dda99dd69779",
+        "android_client_info": {
+          "package_name": "com.Wilsoft.arki_live"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "829954736380-hc27dosqhtr9ol5jk19igve98krv174b.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAMmddrQ6aKt1cTAwOWO2uHmHmYoitRaeY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "829954736380-hc27dosqhtr9ol5jk19igve98krv174b.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:829954736380:android:7ceb71934ef5b491d69779",
+        "android_client_info": {
+          "package_name": "com.wilsoft.arki_streamconfig"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "829954736380-1q6b1forev7jts425e8nuttftj32m5gm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wilsoft.arki_streamconfig",
+            "certificate_hash": "bc0997e4d92d7930868dbe546a69f3fb49cae71f"
+          }
+        },
+        {
+          "client_id": "829954736380-hc27dosqhtr9ol5jk19igve98krv174b.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAMmddrQ6aKt1cTAwOWO2uHmHmYoitRaeY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "829954736380-hc27dosqhtr9ol5jk19igve98krv174b.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:829954736380:android:997cacc00adb5b3c",
+        "android_client_info": {
+          "package_name": "extrae.v"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "829954736380-hc27dosqhtr9ol5jk19igve98krv174b.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAMmddrQ6aKt1cTAwOWO2uHmHmYoitRaeY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "829954736380-hc27dosqhtr9ol5jk19igve98krv174b.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

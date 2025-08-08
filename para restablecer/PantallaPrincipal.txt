@@ -1,0 +1,655 @@
+package com.wilsoft.arki_streamconfig
+
+//import android.app.DatePickerDialog
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+//import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+//import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
+//import kotlinx.coroutines.launch
+import java.util.*
+//import com.google.firebase.database.DataSnapshot
+//import com.google.firebase.database.DatabaseError
+//import com.google.firebase.database.ValueEventListener
+import androidx.compose.material3.SmallTopAppBar
+import androidx.compose.material3.Text
+//import com.wilsoft.arki_streamconfig.DatePicker
+import androidx.compose.foundation.lazy.items
+//import com.wilsoft.arki_streamconfig.Invitado
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import com.google.firebase.database.ValueEventListener
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Snackbar
+import androidx.compose.ui.unit.sp
+
+// Recuerda que necesitas importar `rememberCoroutineScope`
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PantallaGeneradorCaracteres(
+    navController: NavController,
+    firebaseRepository: FirebaseRepository
+) {
+    var selectedDate by remember { mutableStateOf(Calendar.getInstance()) }
+    var invitadosList by remember { mutableStateOf<List<Invitado>>(emptyList()) }
+    var nombrePerfil by remember { mutableStateOf("") }
+    var colorFondo1 by remember { mutableStateOf(Color.White) }
+    var colorLetra1 by remember { mutableStateOf(Color.Black) }
+    var invitadoNombre by remember { mutableStateOf("") }
+    var invitadoRol by remember { mutableStateOf("") }
+    var tema by remember { mutableStateOf("") }
+    var subTema by remember { mutableStateOf("") }
+    var mostrarInvitado by remember { mutableStateOf(false) }
+    var mostrarTema by remember { mutableStateOf(false) }
+    var mostrarSubTema by remember { mutableStateOf(false) }
+    var mostrarLogo by remember { mutableStateOf(false) }
+    var mostrarPublicidad by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val coroutineScope = rememberCoroutineScope()
+
+    // Función que actualiza el nombre y rol cuando se selecciona un invitado
+    fun onInvitadoSelected(invitado: Invitado) {
+        invitadoNombre = invitado.nombre
+        invitadoRol = invitado.rol
+        tema = invitado.tema   // Actualizar el tema al seleccionar un invitado
+        subTema = invitado.subTema  // Actualizar el subtema al seleccionar un invitado
+    }
+    //
+
+    fun loadInvitadosForDate(date: Calendar) {
+        val dateStr = "${date.get(Calendar.YEAR)}-${date.get(Calendar.MONTH) + 1}-${date.get(Calendar.DAY_OF_MONTH)}"
+        firebaseRepository.loadStreamData(
+            "CLAVE_STREAM_FB/INVITADOS/$dateStr",
+            onSuccess = { data ->
+                val invitados = data.map { (key, value) ->
+                    val invitadoMap = value as Map<String, Any>
+                    Invitado(
+                        nombre = key,
+                        rol = invitadoMap["Rol"] as? String ?: "",
+                        tema = invitadoMap["Tema"] as? String ?: "",
+                        subTema = invitadoMap["SubTema"] as? String ?: ""
+                    )
+                }
+                invitadosList = invitados
+            },
+            onFailure = {
+                invitadosList = emptyList()
+            }
+        )
+    }
+
+    LaunchedEffect(selectedDate) {
+        loadInvitadosForDate(selectedDate)
+
+
+
+        //CARGAR PERFIL
+        firebaseRepository.loadStreamData(
+            "CLAVE_STREAM_FB/STREAM_LIVE/GRAFICOS",
+            onSuccess = { data ->
+                nombrePerfil = data["NombrePerfil"] as? String ?: "Sin Perfil"
+                println("Nombre del perfil: $nombrePerfil")
+
+                // Actualizar campos de texto
+                invitadoNombre = data["Invitado"] as? String ?: ""
+                invitadoRol = data["Rol"] as? String ?: ""
+                tema = data["Tema"] as? String ?: ""
+                subTema = data["SubTema"] as? String ?: ""
+
+                // Actualizar switches booleanos
+                mostrarInvitado = data["Mostrar_Invitado"] as? Boolean ?: false
+                mostrarTema = data["Mostrar_Tema"] as? Boolean ?: false
+                mostrarSubTema = data["Mostrar_SubTema"] as? Boolean ?: false
+                mostrarLogo = data["Mostrar_Logo"] as? Boolean ?: false
+                mostrarPublicidad = data["Mostrar_Publicidad"] as? Boolean ?: false
+
+                // Depuración para colorFondo1
+                val colorFondo1String = data["colorFondo1"] as? String
+                println("Color de fondo (raw): $colorFondo1String")
+                try {
+                    colorFondo1 = Color(android.graphics.Color.parseColor(colorFondo1String ?: "#FFFFFF"))
+                    println("Color de fondo parseado: $colorFondo1")
+                } catch (e: IllegalArgumentException) {
+                    println("Error al parsear color de fondo: ${e.message}")
+                    colorFondo1 = Color.White
+                }
+
+                // Depuración para colorLetra1
+                val colorLetra1String = data["colorLetra1"] as? String
+                println("Color de letra (raw): $colorLetra1String")
+                try {
+                    colorLetra1 = Color(android.graphics.Color.parseColor(colorLetra1String ?: "#000000"))
+                    println("Color de letra parseado: $colorLetra1")
+                } catch (e: IllegalArgumentException) {
+                    println("Error al parsear color de letra: ${e.message}")
+                    colorLetra1 = Color.Black
+                }
+            },
+            onFailure = {
+                println("Error al cargar datos: $it")
+                nombrePerfil = "Sin Perfil"
+                colorFondo1 = Color.White
+                colorLetra1 = Color.Black
+
+                invitadoNombre = ""
+                invitadoRol = ""
+                tema = ""
+                subTema = ""
+                mostrarInvitado = false
+                mostrarTema = false
+                mostrarSubTema = false
+                mostrarLogo = false
+                mostrarPublicidad = false
+            }
+        )
+        //FIN DE IMPLEMENTAR NOMBRE , COLOR PERFIL
+
+        // ESCUCHAR CAMBIOS EN TIEMPO REAL
+        firebaseRepository.db.child("CLAVE_STREAM_FB/STREAM_LIVE/GRAFICOS")
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    //nombrePerfil = snapshot.child("NombrePerfil").getValue(String::class.java) ?: "Sin Perfil"
+                    //invitadoNombre = snapshot.child("Invitado").getValue(String::class.java) ?: ""
+                    //invitadoRol = snapshot.child("Rol").getValue(String::class.java) ?: ""
+                    //tema = snapshot.child("Tema").getValue(String::class.java) ?: ""
+                    //subTema = snapshot.child("SubTema").getValue(String::class.java) ?: ""
+
+                    mostrarInvitado = snapshot.child("Mostrar_Invitado").getValue(Boolean::class.java) ?: false
+                    mostrarTema = snapshot.child("Mostrar_Tema").getValue(Boolean::class.java) ?: false
+                    //mostrarSubTema = snapshot.child("Mostrar_SubTema").getValue(Boolean::class.java) ?: false
+                    mostrarLogo = snapshot.child("Mostrar_Logo").getValue(Boolean::class.java) ?: false
+                    mostrarPublicidad = snapshot.child("Mostrar_Publicidad").getValue(Boolean::class.java) ?: false
+
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    println("Error al escuchar los datos: ${error.message}")
+                }
+            })
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },  // SnackbarHost asignado
+
+        topBar = {
+            Column (
+                modifier = Modifier
+                    //.fillMaxSize() // Ocupa todo el tamaño de la pantalla
+                    //.padding(16.dp),
+                //verticalArrangement = Arrangement.Center,  // Centrar verticalmente
+                //horizontalAlignment = Alignment.CenterHorizontally  // Centrar horizontalmente
+            ) {
+                //SmallTopAppBar(title = { Text("Agenda de Invitados") })
+                Surface(color = colorFondo1) {
+                    Text(
+                        text = "Perfil: $nombrePerfil",
+                        style = MaterialTheme.typography.titleLarge.copy(color = colorLetra1),
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+        },
+        containerColor = Color.White // Esto establece el color de fondo de toda la pantalla a blanco
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp)
+        ) {
+
+            // Campo de texto para "Invitado"
+            TextField(
+                value = invitadoNombre,
+                onValueChange = { invitadoNombre = it },
+                label = { Text("Invitado") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Campo de texto para "Rol"
+            TextField(
+                value = invitadoRol,
+                onValueChange = { invitadoRol = it },
+                label = { Text("Rol") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // En tu Column principal después de los TextFields
+            Spacer(modifier = Modifier.height(16.dp))
+
+
+
+
+
+
+
+
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,  // Distribuye los elementos
+                verticalAlignment = Alignment.CenterVertically     // Alineación vertical en el centro
+            ) {
+                // Switch Mostrar Invitado a la izquierda
+                MostrarInvitadoSwitch(
+                    firebaseRepository = firebaseRepository,
+                    invitadoNombre = invitadoNombre,
+                    invitadoRol = invitadoRol,
+                    tema = tema
+                )
+
+                // Botón de agregar con ícono a la derecha
+
+                IconButton(onClick = {
+                    // Iniciar la corrutina dentro del onClick
+                    coroutineScope.launch {
+                        guardarInvitado(
+                            invitadoNombre = invitadoNombre,
+                            invitadoRol = invitadoRol,
+                            tema = tema,
+                            firebaseRepository = firebaseRepository,
+                            onSuccess = {
+                                // Corrutina para mostrar SnackBar después de éxito
+                                coroutineScope.launch {
+                                    // Limpiar campos y actualizar la lista
+                                    invitadoNombre = ""
+                                    snackbarHostState.showSnackbar("Invitado guardado exitosamente")
+                                    loadInvitadosForDate(Calendar.getInstance())  // Actualiza la lista de invitados
+                                }
+                            },
+                            onFailure = { mensajeError ->
+                                // Corrutina para mostrar SnackBar después del error
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(mensajeError)
+                                }
+                            }
+                        )
+                    }
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Agregar Invitado",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
+            //MostrarInvitadoSwitch(firebaseRepository)
+            //MostrarInvitadoSwitch(
+            //    firebaseRepository = firebaseRepository,
+             //   invitadoNombre = invitadoNombre,  // Valor del invitado
+            //    invitadoRol = invitadoRol,        // Valor del rol
+            //    tema = tema                       // Valor del tema
+            //)
+
+            //***********************
+
+
+            // Campo de texto para "Tema"
+            TextField(
+                value = tema,
+                onValueChange = { tema = it },
+                label = { Text("Tema") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            //MostrarTemaSwitch(firebaseRepository)
+            MostrarTemaSwitch(
+                firebaseRepository = firebaseRepository,
+                tema = tema  // Valor actual de la caja de texto "Tema"
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            //SECCION DEL SUBTEMA
+            // Campo de texto para "SubTema"
+            //TextField(
+            //    value = subTema,
+            //    onValueChange = { subTema = it },
+            //    label = { Text("SubTema") },
+            //    modifier = Modifier.fillMaxWidth()
+            //)
+            //Spacer(modifier = Modifier.height(16.dp))
+            //MostrarSubTemaSwitch(firebaseRepository)
+            //FIN SECCION DEL SUBTEMA
+
+            Spacer(modifier = Modifier.height(16.dp))
+            MostrarLogoSwitch(firebaseRepository)
+
+            Spacer(modifier = Modifier.height(16.dp))
+            MostrarPublicidadSwitch(firebaseRepository)
+
+
+
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),  // Ocupar todo el ancho disponible
+                horizontalArrangement = Arrangement.SpaceBetween,  // Separar los elementos
+                verticalAlignment = Alignment.CenterVertically  // Alinear verticalmente en el centro
+            ) {
+                // Columna izquierda: Texto "Selecciona una Fecha"
+                Text(
+                    text = "Invitados de Fecha:",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f)  // Hacer que ocupe la mitad del ancho disponible
+                )
+
+                // Columna derecha: DatePicker
+                DatePicker(selectedDate) { newDate ->
+                    selectedDate = newDate
+                    loadInvitadosForDate(selectedDate)
+                }
+            }
+
+            //*
+            //Text(text = "Selecciona una Fecha:", style = MaterialTheme.typography.titleLarge)
+            //Spacer(modifier = Modifier.height(16.dp))
+
+            //DatePicker(selectedDate) { newDate ->
+            //    selectedDate = newDate
+            //    loadInvitadosForDate(selectedDate)
+            //}
+            ///**
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)  // Ajustar la altura de la lista de invitados
+            ) {
+                if (invitadosList.isEmpty()) {
+                    item {
+                        Text(text = "No hay invitados para la fecha seleccionada.")
+                    }
+                } else {
+                    items(invitadosList) { invitado ->
+                        InvitadoRow(invitado = invitado, onClick = {
+                            onInvitadoSelected(invitado)
+                        })
+                    }
+                }
+            }
+
+
+        }
+    }
+}
+
+
+fun guardarInvitado(
+    invitadoNombre: String,
+    invitadoRol: String,
+    tema: String,
+    firebaseRepository: FirebaseRepository,
+    onSuccess: () -> Unit,
+    onFailure: (String) -> Unit
+) {
+    // Validación: Verificar si el campo "Invitado" está vacío
+    if (invitadoNombre.isEmpty()) {
+        onFailure("Por favor, ingrese un nombre de invitado.")
+        return
+    }
+
+    // Crear el mapa de datos a guardar
+    val datosInvitado = mutableMapOf<String, Any>(
+        "Rol" to invitadoRol
+    )
+
+    // Solo agregar el tema si no está vacío
+    if (tema.isNotEmpty()) {
+        datosInvitado["Tema"] = tema
+    }
+
+    // Obtener la fecha actual y construir la clave
+    val fechaActual = Calendar.getInstance()
+    val fechaStr = "${fechaActual.get(Calendar.YEAR)}-${fechaActual.get(Calendar.MONTH) + 1}-${fechaActual.get(Calendar.DAY_OF_MONTH)}"
+
+    // Guardar los datos en Firebase
+    firebaseRepository.saveData(
+        nodePath = "CLAVE_STREAM_FB/INVITADOS/$fechaStr/$invitadoNombre",
+        data = datosInvitado,
+        onSuccess = {
+            onSuccess()
+        },
+        onFailure = { error ->
+            onFailure("Error al guardar los datos: ${error.message}")
+        }
+    )
+}
+
+
+// Composable para mostrar la información de un invitado en la lista
+@Composable
+fun InvitadoRow(invitado: Invitado, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+            .clickable { onClick() },  // Aquí hacemos que la fila sea clickeable
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Text(text = invitado.nombre, style = MaterialTheme.typography.titleMedium)
+            Text(text = "Rol: ${invitado.rol}", fontSize = 12.sp)
+            //Text(text = "Tema: ${invitado.tema}", fontSize = 9.sp)
+            //Text(text = "Rol: ${invitado.rol}")
+            //Text(text = "Tema: ${invitado.tema}")
+            //Text(text = "SubTema: ${invitado.subTema}")
+        }
+    }
+}
+
+
+
+// Función para escribir en Firebase
+fun updateFirebaseField(field: String, value: Any, firebaseRepository: FirebaseRepository) {
+    val updates = mapOf(field to value)
+    firebaseRepository.saveData("CLAVE_STREAM_FB/STREAM_LIVE/GRAFICOS", updates,
+        onSuccess = {
+            println("$field actualizado a $value en Firebase")
+        },
+        onFailure = { error ->
+            println("Error al actualizar $field: ${error.message}")
+        }
+    )
+}
+
+// Botón "Mostrar Invitado"
+@Composable
+fun MostrarInvitadoSwitch(
+    firebaseRepository: FirebaseRepository,
+    invitadoNombre: String,  // Recibir el valor actual del invitado
+    invitadoRol: String,     // Recibir el valor actual del rol
+    tema: String             // Recibir el valor actual del tema
+) {
+    var mostrarInvitado by remember { mutableStateOf(false) } // Valor local para el switch
+
+    Row {
+        Text(text = "Mostrar Invitado")
+        Switch(
+            checked = mostrarInvitado,
+            onCheckedChange = { isChecked ->
+                mostrarInvitado = isChecked
+
+                // Actualizar Firebase - Primero desactivar los otros campos con false
+                updateFirebaseField("Mostrar_Tema", false, firebaseRepository)
+                updateFirebaseField("Mostrar_SubTema", false, firebaseRepository)
+                updateFirebaseField("Mostrar_Publicidad", false, firebaseRepository)
+
+                // Actualizar los valores de Invitado, Rol y Tema con las cajas de texto
+                updateFirebaseField("Invitado", invitadoNombre, firebaseRepository)
+                updateFirebaseField("Rol", invitadoRol, firebaseRepository)
+                updateFirebaseField("Tema", tema, firebaseRepository)
+
+                // Actualizar el campo Mostrar_Invitado en Firebase
+                updateFirebaseField("Mostrar_Invitado", mostrarInvitado, firebaseRepository)
+
+            },
+            colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
+        )
+    }
+}
+
+// Botón "Mostrar Tema"
+@Composable
+fun MostrarTemaSwitch(
+    firebaseRepository: FirebaseRepository,
+    tema: String  // Recibir el valor actual del tema
+) {
+    var mostrarTema by remember { mutableStateOf(false) }  // Valor local para el switch
+
+    Row {
+        Text(text = "Mostrar Tema")
+        Switch(
+            checked = mostrarTema,
+            onCheckedChange = { isChecked ->
+                mostrarTema = isChecked
+
+                // Actualizar Firebase - Primero desactivar los otros campos con false
+                updateFirebaseField("Mostrar_Invitado", false, firebaseRepository)
+                updateFirebaseField("Mostrar_SubTema", false, firebaseRepository)
+                updateFirebaseField("Mostrar_Publicidad", false, firebaseRepository)
+
+                // Actualizar el valor del tema en Firebase
+                updateFirebaseField("Tema", tema, firebaseRepository)
+
+                // Actualizar el campo Mostrar_Tema en Firebase
+                updateFirebaseField("Mostrar_Tema", mostrarTema, firebaseRepository)
+            },
+            colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
+        )
+    }
+}
+
+// Botón "Mostrar SubTema"
+@Composable
+fun MostrarSubTemaSwitch(firebaseRepository: FirebaseRepository) {
+    var mostrarSubTema by remember { mutableStateOf(false) }
+
+    Row {
+        Text(text = "Mostrar SubTema")
+        Switch(
+            checked = mostrarSubTema,
+            onCheckedChange = { isChecked ->
+                mostrarSubTema = isChecked
+                // Actualizar Firebase
+                updateFirebaseField("Mostrar_SubTema", mostrarSubTema, firebaseRepository)
+                // Desactivar otros valores relacionados en Firebase
+                if (mostrarSubTema) {
+                    updateFirebaseField("Mostrar_Invitado", false, firebaseRepository)
+                    updateFirebaseField("Mostrar_Tema", false, firebaseRepository)
+                    updateFirebaseField("Mostrar_Publicidad", false, firebaseRepository)
+                }
+            },
+            colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
+        )
+    }
+}
+
+// Botón "Mostrar Logo"
+@Composable
+fun MostrarLogoSwitch(firebaseRepository: FirebaseRepository) {
+    var mostrarLogo by remember { mutableStateOf(false) }
+
+    Row {
+        Text(text = "Mostrar Logo")
+        Switch(
+            checked = mostrarLogo,
+            onCheckedChange = { isChecked ->
+                mostrarLogo = isChecked
+                // Actualizar Firebase
+                updateFirebaseField("Mostrar_Logo", mostrarLogo, firebaseRepository)
+            },
+            colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
+        )
+    }
+}
+
+// Botón "Mostrar Publicidad"
+@Composable
+fun MostrarPublicidadSwitch(firebaseRepository: FirebaseRepository) {
+    var mostrarPublicidad by remember { mutableStateOf(false) }
+
+    Row {
+        Text(text = "Mostrar Publicidad")
+        Switch(
+            checked = mostrarPublicidad,
+            onCheckedChange = { isChecked ->
+                mostrarPublicidad = isChecked
+                // Actualizar Firebase
+                updateFirebaseField("Mostrar_Publicidad", mostrarPublicidad, firebaseRepository)
+                // Desactivar otros valores relacionados en Firebase
+                if (mostrarPublicidad) {
+                    updateFirebaseField("Mostrar_Invitado", false, firebaseRepository)
+                    updateFirebaseField("Mostrar_Tema", false, firebaseRepository)
+                    updateFirebaseField("Mostrar_SubTema", false, firebaseRepository)
+                }
+            },
+            colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
+        )
+    }
+}
+
+
+fun escucharCambiosEnFirebase(
+    firebaseRepository: FirebaseRepository,
+    onDataChanged: (String, String, String, String, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit
+) {
+    // Escuchar los cambios en la clave principal "CLAVE_STREAM_FB/STREAM_LIVE/GRAFICOS"
+    firebaseRepository.db.child("CLAVE_STREAM_FB/STREAM_LIVE/GRAFICOS")
+        .addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                // Extraer los campos
+                val invitado = snapshot.child("Invitado").getValue(String::class.java) ?: ""
+                val rol = snapshot.child("Rol").getValue(String::class.java) ?: ""
+                val tema = snapshot.child("Tema").getValue(String::class.java) ?: ""
+                val subTema = snapshot.child("SubTema").getValue(String::class.java) ?: ""
+
+                // Leer los campos booleanos
+                val mostrarInvitado = snapshot.child("Mostrar_Invitado").getValue(Boolean::class.java) ?: false
+                val mostrarTema = snapshot.child("Mostrar_Tema").getValue(Boolean::class.java) ?: false
+                val mostrarSubTema = snapshot.child("Mostrar_SubTema").getValue(Boolean::class.java) ?: false
+                val mostrarLogo = snapshot.child("Mostrar_Logo").getValue(Boolean::class.java) ?: false
+                val mostrarPublicidad = snapshot.child("Mostrar_Publicidad").getValue(Boolean::class.java) ?: false
+
+                // Llamar al callback para actualizar los valores en la interfaz
+                onDataChanged(invitado, rol, tema, subTema, mostrarInvitado, mostrarTema, mostrarSubTema, mostrarLogo, mostrarPublicidad)
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                println("Error al escuchar datos en Firebase: ${error.message}")
+            }
+        })
+}
+
