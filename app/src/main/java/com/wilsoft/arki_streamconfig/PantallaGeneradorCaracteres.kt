@@ -20,7 +20,7 @@ import com.google.firebase.database.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.*
-
+import android.util.Log // Para el manejo de logs
 // Importaciones adicionales
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -36,6 +36,20 @@ import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.animation.core.*
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.ui.graphics.vector.ImageVector
+import kotlinx.coroutines.delay
+
+val MaterialTheme.warningColor: Color
+    @Composable
+    get() = Color(0xFFFF9800) // Color naranja para warning
 
 // Data classes optimizadas
 data class Entrevistado(
@@ -49,6 +63,13 @@ data class Entrevistado(
     val activo: Boolean = true // Para soft delete
 )
 
+// Enum para los estados del botón
+enum class AiringButtonState {
+    NORMAL,      // Estado normal
+    COUNTDOWN,   // Contando hacia atrás antes de enviar
+    PROCESSING,  // Enviando a Firebase
+    ON_AIR       // Actualmente al aire
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -149,6 +170,14 @@ fun PantallaGeneradorCaracteres(
     // Estados para confirmación de eliminación
     var showConfirmacionEliminar by remember { mutableStateOf(false) }
     var invitadoParaEliminar by remember { mutableStateOf<Invitado?>(null) }
+
+    // Agregar un estado para mostrar estado de sincronización
+    var estadoSincronizacion by remember { mutableStateOf("Conectado") }
+
+    // Estados para el botón "Al Aire" inteligente
+    var airingButtonState by remember { mutableStateOf(AiringButtonState.NORMAL) }
+    var countdownTime by remember { mutableStateOf(0) }
+    var airingJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     // ================================
     // FUNCIONES DE CONTROL
@@ -468,6 +497,104 @@ fun PantallaGeneradorCaracteres(
         limpiarCampos()
     }
 
+    // Función para auto-desactivar switches cuando no hay contenido
+    fun autoDisableSwitch(switchType: String, newValue: Boolean) {
+        when (switchType) {
+            "lowerThird" -> {
+                if (!newValue && lowerThirdChecked) {
+                    // Desactivar Lower Third automáticamente
+                    updateLowerThirdWithFeedback(false)
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("🔄 Lower Third desactivado: sin nombre de invitado")
+                    }
+                }
+            }
+            "tema" -> {
+                if (!newValue && temaChecked) {
+                    // Desactivar Tema automáticamente
+                    updateTemaWithFeedback(false)
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("🔄 Mostrar Tema desactivado: sin contenido de tema")
+                    }
+                }
+            }
+        }
+    }
+
+    // Función para ejecutar realmente el poner al aire
+    fun executeAiring() {
+        airingButtonState = AiringButtonState.PROCESSING
+
+        val updates = mapOf(
+            "Invitado" to invitadoNombre,
+            "Rol" to invitadoRol,
+            "Tema" to tema,
+            "Mostrar_Invitado" to true,
+            // Desactivar otros elementos
+            "Mostrar_Tema" to false,
+            "Mostrar_SubTema" to false,
+            "Mostrar_Publicidad" to false
+        )
+
+        firebaseRepository.saveData(
+            "CLAVE_STREAM_FB/STREAM_LIVE/GRAFICOS",
+            updates,
+            onSuccess = {
+                airingButtonState = AiringButtonState.NORMAL
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("✅ ¡EN VIVO! - $invitadoNombre al aire")
+                }
+                // Los estados se actualizarán automáticamente por el listener
+            },
+            onFailure = { error ->
+                airingButtonState = AiringButtonState.NORMAL
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("❌ Error al enviar: ${error.message}")
+                }
+            }
+        )
+    }
+
+    // Función para iniciar el proceso de poner al aire
+    fun startAiringProcess() {
+        if (invitadoNombre.trim().isEmpty()) {
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar("⚠️ Agregue un nombre de invitado primero")
+            }
+            return
+        }
+
+        airingButtonState = AiringButtonState.COUNTDOWN
+        countdownTime = 4 // 4 segundos de gracia para cancelar
+
+        airingJob = coroutineScope.launch {
+            // Countdown de 4 segundos
+            repeat(4) {
+                delay(1000)
+                countdownTime -= 1
+
+                if (airingButtonState != AiringButtonState.COUNTDOWN) {
+                    return@launch // Cancelado
+                }
+            }
+
+            // Si llegamos aquí, el usuario no canceló
+            executeAiring()
+        }
+    }
+
+    // Función para cancelar el proceso de poner al aire
+    fun cancelAiringProcess() {
+        airingJob?.cancel()
+        airingButtonState = AiringButtonState.NORMAL
+        countdownTime = 0
+
+        coroutineScope.launch {
+            snackbarHostState.showSnackbar("❌ Cancelado - No se envió al aire")
+        }
+    }
+
+
     // ================================
     // CONFIGURACIÓN DE LISTENERS Y CARGA INICIAL (OPTIMIZADA)
     // ================================
@@ -523,6 +650,113 @@ fun PantallaGeneradorCaracteres(
             },
             onFailure = { /* Manejar error */ }
         )
+    }
+
+    // Listener en tiempo real para sincronización automática de switches
+    DisposableEffect(Unit) {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                // Solo actualizar si los datos han sido cargados inicialmente
+                if (nombrePerfil.isNotEmpty()) {
+                    try {
+                        // Sincronizar switches desde Firebase
+                        val nuevoMostrarInvitado = snapshot.child("Mostrar_Invitado").getValue(Boolean::class.java) ?: false
+                        val nuevoMostrarTema = snapshot.child("Mostrar_Tema").getValue(Boolean::class.java) ?: false
+                        val nuevoMostrarLogo = snapshot.child("Mostrar_Logo").getValue(Boolean::class.java) ?: false
+                        val nuevoMostrarPublicidad = snapshot.child("Mostrar_Publicidad").getValue(Boolean::class.java) ?: false
+
+                        // Sincronizar campos de texto
+                        val nuevoInvitadoNombre = snapshot.child("Invitado").getValue(String::class.java) ?: ""
+                        val nuevoInvitadoRol = snapshot.child("Rol").getValue(String::class.java) ?: ""
+                        val nuevoTema = snapshot.child("Tema").getValue(String::class.java) ?: ""
+                        val nuevoSubTema = snapshot.child("SubTema").getValue(String::class.java) ?: ""
+
+                        // Actualizar campos de texto primero
+                        if (nuevoInvitadoNombre != invitadoNombre) {
+                            invitadoNombre = nuevoInvitadoNombre
+                        }
+                        if (nuevoInvitadoRol != invitadoRol) {
+                            invitadoRol = nuevoInvitadoRol
+                        }
+                        if (nuevoTema != tema) {
+                            tema = nuevoTema
+                        }
+                        if (nuevoSubTema != subTema) {
+                            subTema = nuevoSubTema
+                        }
+
+                        // 🆕 LÓGICA DE AUTO-DESACTIVACIÓN CONDICIONAL
+                        val hasInvitadoContent = nuevoInvitadoNombre.trim().isNotEmpty()
+                        val hasTemaContent = nuevoTema.trim().isNotEmpty()
+
+                        // Actualizar switches con validación de contenido
+                        if (nuevoMostrarInvitado != lowerThirdChecked && !lowerThirdProcessing) {
+                            // Si el switch debe estar activado pero no hay contenido, forzar desactivación
+                            if (nuevoMostrarInvitado && !hasInvitadoContent) {
+                                // Auto-desactivar en Firebase si no hay contenido
+                                updateFirebaseField("Mostrar_Invitado", false, firebaseRepository)
+                                lowerThirdChecked = false
+                                mostrarInvitado = false
+                            } else {
+                                lowerThirdChecked = nuevoMostrarInvitado
+                                mostrarInvitado = nuevoMostrarInvitado
+                            }
+                        }
+
+                        if (nuevoMostrarTema != temaChecked && !temaProcessing) {
+                            // Si el switch debe estar activado pero no hay contenido, forzar desactivación
+                            if (nuevoMostrarTema && !hasTemaContent) {
+                                // Auto-desactivar en Firebase si no hay contenido
+                                updateFirebaseField("Mostrar_Tema", false, firebaseRepository)
+                                temaChecked = false
+                                mostrarTema = false
+                            } else {
+                                temaChecked = nuevoMostrarTema
+                                mostrarTema = nuevoMostrarTema
+                            }
+                        }
+
+                        // Logo y Publicidad no necesitan validación de contenido
+                        if (nuevoMostrarLogo != logoChecked && !logoProcessing) {
+                            logoChecked = nuevoMostrarLogo
+                            mostrarLogo = nuevoMostrarLogo
+                        }
+
+                        if (nuevoMostrarPublicidad != publicidadChecked && !publicidadProcessing) {
+                            publicidadChecked = nuevoMostrarPublicidad
+                            mostrarPublicidad = nuevoMostrarPublicidad
+                        }
+
+                        // 🆕 CANCELAR COUNTDOWN AUTOMÁTICAMENTE SI ALGUIEN MÁS PUSO AL AIRE
+                        if (nuevoMostrarInvitado && airingButtonState == AiringButtonState.COUNTDOWN) {
+                            // Alguien más activó el Lower Third, cancelar nuestro countdown
+                            airingJob?.cancel()
+                            airingButtonState = AiringButtonState.NORMAL
+                            countdownTime = 0
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("🔄 Otro usuario puso al aire")
+                            }
+                        }
+
+                    } catch (e: Exception) {
+                        Log.e("SwitchSync", "Error sincronizando switches: ${e.message}")
+                    }
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("SwitchSync", "Error en listener de switches: ${error.message}")
+            }
+        }
+
+        // Añadir el listener en tiempo real al path de gráficos
+        val databaseRef = firebaseRepository.db.child("CLAVE_STREAM_FB/STREAM_LIVE/GRAFICOS")
+        databaseRef.addValueEventListener(listener)
+
+        // Limpiar el listener cuando se destruya el componente
+        onDispose {
+            databaseRef.removeEventListener(listener)
+        }
     }
 
     // ================================
@@ -670,7 +904,12 @@ fun PantallaGeneradorCaracteres(
                                 // 🆕 Nuevos parámetros
                                 modoEdicion = modoEdicion,
                                 onCancelarEdicion = { cancelarEdicion() },
-                                onAlAireDirecto = { ponerAlAireDirecto() }
+                                // 🆕 Parámetros para botón inteligente
+                                isOnAir = lowerThirdChecked, // Basado en el estado del switch Lower Third
+                                airingButtonState = airingButtonState,
+                                countdownTime = countdownTime,
+                                onStartAiring = { startAiringProcess() },
+                                onCancelAiring = { cancelAiringProcess() }
                             )
                         }
 
@@ -745,6 +984,14 @@ fun PantallaGeneradorCaracteres(
                                 lowerThirdChecked = lowerThirdChecked,
                                 lowerThirdProcessing = lowerThirdProcessing,
                                 onLowerThirdChange = { isChecked ->
+                                    // Solo permitir activación si hay contenido de invitado
+                                    if (isChecked && invitadoNombre.trim().isEmpty()) {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("⚠️ Agregue un nombre de invitado primero")
+                                        }
+                                        return@SimplifiedSwitchCard
+                                    }
+
                                     val additionalUpdates = mapOf(
                                         "Mostrar_Tema" to false,
                                         "Mostrar_SubTema" to false,
@@ -761,6 +1008,14 @@ fun PantallaGeneradorCaracteres(
                                 temaChecked = temaChecked,
                                 temaProcessing = temaProcessing,
                                 onTemaChange = { isChecked ->
+                                    // Solo permitir activación si hay contenido de tema
+                                    if (isChecked && tema.trim().isEmpty()) {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("⚠️ Agregue un tema primero")
+                                        }
+                                        return@SimplifiedSwitchCard
+                                    }
+
                                     val additionalUpdates = mapOf(
                                         "Mostrar_Invitado" to false,
                                         "Mostrar_SubTema" to false,
@@ -789,7 +1044,13 @@ fun PantallaGeneradorCaracteres(
                                         "Mostrar_SubTema" to false
                                     )
                                     updatePublicidadWithFeedback(isChecked, additionalUpdates)
-                                }
+                                },
+                                // 🆕 INFORMACIÓN SINCRONIZADA (AGREGAR ESTAS LÍNEAS)
+                                invitadoNombre = invitadoNombre,
+                                invitadoRol = invitadoRol,
+                                tema = tema,
+                                // 🆕 FUNCIÓN DE AUTO-DESACTIVACIÓN
+                                onAutoDisableSwitch = ::autoDisableSwitch
                             )
                         }
                     }
@@ -1088,7 +1349,6 @@ fun PantallaGeneradorCaracteres(
 // COMPOSABLES AUXILIARES MEJORADOS
 // ================================
 
-
 @Composable
 private fun ExpandableEditorCard(
     expanded: Boolean,
@@ -1110,7 +1370,12 @@ private fun ExpandableEditorCard(
     // 🆕 Nuevos parámetros para edición
     modoEdicion: Boolean = false,
     onCancelarEdicion: () -> Unit = {},
-    onAlAireDirecto: () -> Unit = {} // ← NUEVO PARÁMETRO
+    // 🆕 Parámetros para el botón inteligente
+    isOnAir: Boolean = false,
+    airingButtonState: AiringButtonState = AiringButtonState.NORMAL,
+    countdownTime: Int = 0,
+    onStartAiring: () -> Unit = {},
+    onCancelAiring: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1133,6 +1398,7 @@ private fun ExpandableEditorCard(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Header con indicador de modo
+            // Header con indicador de modo
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1140,20 +1406,39 @@ private fun ExpandableEditorCard(
             ) {
                 Column {
                     Text(
-                        text = if (modoEdicion) "✏️ Editando Invitado" else "✏️ Editor de Entrevistados",
+                        text = when {
+                            isOnAir -> "🔴 EN VIVO - Editando"
+                            modoEdicion -> "✏️ Editando Invitado"
+                            else -> "✏️ Editor de Entrevistados"
+                        },
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = if (modoEdicion) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary
+                        color = when {
+                            isOnAir -> Color.Red
+                            modoEdicion -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.primary
+                        }
                     )
 
                     // 🆕 Indicador visual del modo
-                    if (modoEdicion) {
-                        Text(
-                            text = "Modificando registro existente",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontStyle = FontStyle.Italic
-                        )
+                    when {
+                        isOnAir -> {
+                            Text(
+                                text = "Modificando información que está al aire",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Red,
+                                fontStyle = FontStyle.Italic,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        modoEdicion -> {
+                            Text(
+                                text = "Modificando registro existente",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontStyle = FontStyle.Italic
+                            )
+                        }
                     }
                 }
 
@@ -1312,19 +1597,17 @@ private fun ExpandableEditorCard(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp) // Espacio entre el botón superior y la fila inferior
                         ) {
-                            // 🆕 BOTÓN AL AIRE DIRECTO (arriba y solo)
-                            Button(
-                                onClick = onAlAireDirecto,
-                                modifier = Modifier.fillMaxWidth(), // Ocupa todo el ancho
-                                enabled = invitadoNombre.isNotBlank(),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.tertiary
-                                )
-                            ) {
-                                Icon(Icons.Default.FlashOn, contentDescription = null)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("AL AIRE")
-                            }
+                            // 🆕 BOTÓN INTELIGENTE AL AIRE
+                            SmartAirButton(
+                                invitadoNombre = invitadoNombre,
+                                invitadoRol = invitadoRol,
+                                tema = tema,
+                                isOnAir = isOnAir,
+                                airingButtonState = airingButtonState,
+                                countdownTime = countdownTime,
+                                onStartAiring = onStartAiring,
+                                onCancelAiring = onCancelAiring
+                            )
 
                             // 🔄 Botones originales (modo agregar) - en una Row
                             Row(
@@ -1740,8 +2023,31 @@ private fun SimplifiedSwitchCard(
     invitadoNombre: String = "",
     invitadoRol: String = "",
     tema: String = "",
-    mostrarInvitado: Boolean = false
+
+    // 🆕 FUNCIÓN PARA DESACTIVAR SWITCHES AUTOMÁTICAMENTE
+    onAutoDisableSwitch: (String, Boolean) -> Unit = { _, _ -> }
 ) {
+    // 🆕 LÓGICA CONDICIONAL AUTOMÁTICA
+    val hasInvitadoContent = invitadoNombre.trim().isNotEmpty()
+    val hasTemaContent = tema.trim().isNotEmpty()
+
+    // Calcular si los switches deben estar habilitados basándose en contenido
+    val lowerThirdConditionalEnabled = lowerThirdEnabled && hasInvitadoContent
+    val temaConditionalEnabled = temaEnabled && hasTemaContent
+
+    // 🆕 EFECTO PARA DESACTIVAR SWITCHES AUTOMÁTICAMENTE CUANDO NO HAY CONTENIDO
+    LaunchedEffect(hasInvitadoContent, hasTemaContent) {
+        // Si no hay contenido de invitado y el lower third está activo, desactivarlo
+        if (!hasInvitadoContent && lowerThirdChecked) {
+            onAutoDisableSwitch("lowerThird", false)
+        }
+
+        // Si no hay contenido de tema y el switch tema está activo, desactivarlo
+        if (!hasTemaContent && temaChecked) {
+            onAutoDisableSwitch("tema", false)
+        }
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -1756,178 +2062,104 @@ private fun SimplifiedSwitchCard(
                 fontWeight = FontWeight.Bold
             )
 
-            // 🆕 INDICADOR VISUAL DE DATOS LISTOS
+            // 🆕 SECCIÓN INFORMATIVA - INFORMACIÓN ACTUAL AL AIRE
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (mostrarInvitado && invitadoNombre.isNotEmpty()) {
-                        // Si está al aire: rojo
-                        Color.Red.copy(alpha = 0.1f)
-                    } else if (invitadoNombre.isNotEmpty()) {
-                        // Si hay datos pero no al aire: azul
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                    } else {
-                        // Sin datos: gris
-                        MaterialTheme.colorScheme.surfaceVariant
-                    }
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
                 ),
-                border = BorderStroke(
-                    1.dp,
-                    if (mostrarInvitado && invitadoNombre.isNotEmpty()) {
-                        Color.Red
-                    } else if (invitadoNombre.isNotEmpty()) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.outline
-                    }
-                )
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Header con estado
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (mostrarInvitado && invitadoNombre.isNotEmpty()) {
-                            // EN VIVO
-                            Icon(
-                                Icons.Default.Circle,
-                                contentDescription = "En vivo",
-                                tint = Color.Red,
-                                modifier = Modifier.size(12.dp)
+                        Text(
+                            text = "📡 EN VIVO",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        // Indicador de estado en vivo
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .background(
+                                        color = if (lowerThirdChecked || temaChecked) Color.Red else Color.Gray,
+                                        shape = CircleShape
+                                    )
                             )
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "🔴 EN VIVO",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.Red
-                            )
-                        } else if (invitadoNombre.isNotEmpty()) {
-                            // DATOS LISTOS
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = "Listo",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = "📋 DATOS LISTOS",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            // SIN DATOS
-                            Icon(
-                                Icons.Default.Info,
-                                contentDescription = "Sin datos",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = "⚪ SIN DATOS",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = if (lowerThirdChecked || temaChecked) "AL AIRE" else "FUERA DE AIRE",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (lowerThirdChecked || temaChecked) Color.Red else Color.Gray,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
 
-                    // Información de los datos actuales
-                    if (invitadoNombre.isNotEmpty()) {
-                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+                    Divider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                        thickness = 1.dp
+                    )
 
-                        // Nombre
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Person,
-                                contentDescription = "Nombre",
-                                modifier = Modifier.size(14.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = invitadoNombre,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
+                    // Información actual sincronizada
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        InfoRow(
+                            label = "Invitado:",
+                            value = invitadoNombre.ifEmpty { "Sin información" },
+                            isEmpty = invitadoNombre.isEmpty()
+                        )
 
-                        // Rol (si existe)
-                        if (invitadoRol.isNotEmpty()) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Work,
-                                    contentDescription = "Rol",
-                                    modifier = Modifier.size(14.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = invitadoRol,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
+                        InfoRow(
+                            label = "Rol:",
+                            value = invitadoRol.ifEmpty { "Sin información" },
+                            isEmpty = invitadoRol.isEmpty()
+                        )
 
-                        // Tema (si existe)
-                        if (tema.isNotEmpty()) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Topic,
-                                    contentDescription = "Tema",
-                                    modifier = Modifier.size(14.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = tema,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    } else {
-                        // Mensaje cuando no hay datos
-                        Text(
-                            text = "Vaya al Tab 1 para cargar información de invitados",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontStyle = FontStyle.Italic
+                        InfoRow(
+                            label = "Tema:",
+                            value = tema.ifEmpty { "Sin información" },
+                            isEmpty = tema.isEmpty()
                         )
                     }
                 }
             }
 
-            // Switch Lower Third / Invitado
-            SimplifiedSwitchRow(
+            // 🆕 Switch Lower Third con validación de contenido
+            SimplifiedSwitchRowWithValidation(
                 label = "Lower Third",
-                enabled = lowerThirdEnabled,
+                enabled = lowerThirdConditionalEnabled,
                 checked = lowerThirdChecked,
                 processing = lowerThirdProcessing,
-                onChange = onLowerThirdChange
+                onChange = onLowerThirdChange,
+                hasRequiredContent = hasInvitadoContent,
+                missingContentMessage = "Requiere nombre de invitado"
             )
 
-            // Switch Tema
-            SimplifiedSwitchRow(
+            // 🆕 Switch Tema con validación de contenido
+            SimplifiedSwitchRowWithValidation(
                 label = "Mostrar Tema",
-                enabled = temaEnabled,
+                enabled = temaConditionalEnabled,
                 checked = temaChecked,
                 processing = temaProcessing,
-                onChange = onTemaChange
+                onChange = onTemaChange,
+                hasRequiredContent = hasTemaContent,
+                missingContentMessage = "Requiere tema"
             )
+
 
             // Switch Logo
             SimplifiedSwitchRow(
@@ -1950,6 +2182,85 @@ private fun SimplifiedSwitchCard(
     }
 }
 
+// 🆕 COMPONENTE AUXILIAR PARA MOSTRAR INFORMACIÓN
+@Composable
+private fun InfoRow(
+    label: String,
+    value: String,
+    isEmpty: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(0.3f)
+        )
+
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (isEmpty)
+                MaterialTheme.colorScheme.outline
+            else
+                MaterialTheme.colorScheme.onSurface,
+            fontStyle = if (isEmpty) FontStyle.Italic else FontStyle.Normal,
+            modifier = Modifier.weight(0.7f),
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+// 🆕 NUEVO COMPONENTE: Switch con validación de contenido requerido
+@Composable
+private fun SimplifiedSwitchRowWithValidation(
+    label: String,
+    enabled: Boolean,
+    checked: Boolean,
+    processing: Boolean,
+    onChange: (Boolean) -> Unit,
+    hasRequiredContent: Boolean,
+    missingContentMessage: String
+) {
+    Column {
+        SimplifiedSwitchRow(
+            label = label,
+            enabled = enabled,
+            checked = checked,
+            processing = processing,
+            onChange = onChange
+        )
+
+        // 🆕 Mensaje de advertencia cuando no hay contenido
+        if (!hasRequiredContent) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 8.dp, top = 4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.outline
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = missingContentMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    fontStyle = FontStyle.Italic
+                )
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -2143,3 +2454,192 @@ private fun updateFirebaseField(
     )
 }
 
+// ================================
+// SMARTAIRBUTTON CORREGIDO (SIN .first y .second)
+// ================================
+
+@Composable
+fun SmartAirButton(
+    invitadoNombre: String,
+    invitadoRol: String,
+    tema: String,
+    isOnAir: Boolean,
+    airingButtonState: AiringButtonState,
+    countdownTime: Int,
+    onStartAiring: () -> Unit,
+    onCancelAiring: () -> Unit,
+    enabled: Boolean = true
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "pulsing")
+
+    // Animación de pulso cuando está al aire
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (isOnAir) 0.3f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
+
+    // 🔧 CORREGIDO: Determinar colores y texto según estado
+    val buttonColor: Color
+    val contentColor: Color
+    val buttonText: String
+    val buttonIcon: ImageVector
+
+    when {
+        isOnAir -> {
+            buttonColor = Color.Red.copy(alpha = pulseAlpha)
+            contentColor = Color.White
+            buttonText = "🔴 EN VIVO"
+            buttonIcon = Icons.Default.Stop
+        }
+        airingButtonState == AiringButtonState.COUNTDOWN -> {
+            buttonColor = Color(0xFFFF9800) // Color naranja directo
+            contentColor = Color.White
+            buttonText = "CANCELAR ($countdownTime)"
+            buttonIcon = Icons.Default.Cancel
+        }
+        airingButtonState == AiringButtonState.PROCESSING -> {
+            buttonColor = MaterialTheme.colorScheme.primary
+            contentColor = MaterialTheme.colorScheme.onPrimary
+            buttonText = "ENVIANDO..."
+            buttonIcon = Icons.Default.CloudUpload
+        }
+        else -> {
+            buttonColor = MaterialTheme.colorScheme.primary
+            contentColor = MaterialTheme.colorScheme.onPrimary
+            buttonText = "📡 AL AIRE"
+            buttonIcon = Icons.Default.PlayArrow
+        }
+    }
+
+    val hasRequiredContent = invitadoNombre.trim().isNotEmpty()
+
+    Column {
+        Button(
+            onClick = {
+                when (airingButtonState) {
+                    AiringButtonState.NORMAL -> {
+                        if (hasRequiredContent) {
+                            onStartAiring()
+                        }
+                    }
+                    AiringButtonState.COUNTDOWN -> {
+                        onCancelAiring()
+                    }
+                    else -> { /* No hacer nada durante PROCESSING */ }
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            enabled = enabled && (airingButtonState != AiringButtonState.PROCESSING) &&
+                    (hasRequiredContent || airingButtonState == AiringButtonState.COUNTDOWN),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = buttonColor, // 🔧 CORREGIDO: Sin .first
+                contentColor = contentColor,   // 🔧 CORREGIDO: Sin .second
+                disabledContainerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+            ),
+            elevation = ButtonDefaults.buttonElevation(
+                defaultElevation = if (isOnAir) 8.dp else 4.dp
+            )
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (airingButtonState == AiringButtonState.PROCESSING) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Icon(
+                        buttonIcon, // 🔧 CORREGIDO: Sin .second
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = buttonText, // 🔧 CORREGIDO: Sin .first
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall
+                )
+            }
+        }
+
+        // Mensaje de estado/advertencia
+        when {
+            !hasRequiredContent && airingButtonState == AiringButtonState.NORMAL -> {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Requiere nombre de invitado",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        fontStyle = FontStyle.Italic
+                    )
+                }
+            }
+
+            airingButtonState == AiringButtonState.COUNTDOWN -> {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Haz clic para cancelar o espera $countdownTime segundos",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontStyle = FontStyle.Italic
+                    )
+                }
+            }
+
+            isOnAir -> {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = Color.Green
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Información transmitiendo en vivo",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Green,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+}
