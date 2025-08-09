@@ -51,6 +51,8 @@ import androidx.compose.material.icons.filled.*
 import com.wilsoft.arki_streamconfig.utilidades.StorageExtensions
 import com.wilsoft.arki_streamconfig.utilidades.StorageImageItem
 import com.wilsoft.arki_streamconfig.components.AdvancedImageSelector
+// AGREGAR en la parte superior del archivo, junto con las otras importaciones:
+import androidx.compose.material.icons.filled.LibraryAdd
 
 // ================================
 // FUNCIONES DE FIREBASE (GLOBALES)
@@ -65,6 +67,7 @@ fun loadPublicidadesForProfile(
     val database = FirebaseDatabase.getInstance()
     // CORREGIDA: Ruta correcta según la estructura de Firebase mostrada
     val publicidadesRef = database.reference.child("CLAVE_STREAM_FB").child("PUBLICIDADES").child(profile)
+
 
     publicidadesRef.addListenerForSingleValueEvent(object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
@@ -312,9 +315,25 @@ fun PantallaPublicidad(
         }
     }
 
+    var showSpotSelector by remember { mutableStateOf(false) }
+
     // Función para mostrar el selector de imágenes de storage
     fun mostrarSelectorStorage() {
         showImageSelector = true
+    }
+
+    // NUEVA FUNCIÓN: Para manejar la selección de spot
+    fun handleSpotSeleccionado(spotSeleccionado: SpotSeleccionado) {
+        nombrePublicidad = spotSeleccionado.titulo
+        fechaInicial = spotSeleccionado.fechaInicio
+        fechaFinal = spotSeleccionado.fechaFinal
+        imageUrl = spotSeleccionado.urlImagen
+
+        coroutineScope.launch {
+            snackbarHostState.showSnackbar(
+                "✅ Datos del spot '${spotSeleccionado.titulo}' cargados exitosamente"
+            )
+        }
     }
 
     // Cargar perfiles al iniciar
@@ -442,6 +461,56 @@ fun PantallaPublicidad(
                 }
             }
 
+            // NUEVA SECCIÓN: Botón para cargar desde spots existentes
+            if (selectedProfile.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.LibraryAdd,
+                                contentDescription = "Cargar desde spots",
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Cargar desde Spots Existentes",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "Selecciona un spot existente con imagen para llenar automáticamente los campos",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        FilledTonalButton(
+                            onClick = { showSpotSelector = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Search, contentDescription = "Buscar")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Buscar Spots con Imágenes")
+                        }
+                    }
+                }
+            }
+
             // Formulario de edición/creación
             if (isEditing) {
                 PublicidadFormCard(
@@ -512,6 +581,10 @@ fun PantallaPublicidad(
         }
     }
 
+
+
+
+
     // Diálogo selector de imágenes de storage usando componente existente
     if (showImageSelector) {
         AdvancedImageSelector(
@@ -529,6 +602,17 @@ fun PantallaPublicidad(
             }
         )
     }
+
+    // NUEVO DIÁLOGO: Selector de spots existentes
+    if (showSpotSelector) {
+        PantallaPublicidadExistente(
+            onSpotSeleccionado = { spotSeleccionado ->
+                handleSpotSeleccionado(spotSeleccionado)
+            },
+            onDismiss = { showSpotSelector = false }
+        )
+    }
+
 }
 
 // ================================
