@@ -63,12 +63,19 @@ fun loadPublicidadesForProfile(
     onFailure: (Exception) -> Unit
 ) {
     val database = FirebaseDatabase.getInstance()
-    val profileRef = database.reference.child("CLAVE_STREAM_FB").child("PERFILES").child(profile).child("PUBLICIDADES")
+    // CORREGIDA: Ruta correcta según la estructura de Firebase mostrada
+    val publicidadesRef = database.reference.child("CLAVE_STREAM_FB").child("PUBLICIDADES").child(profile)
 
-    profileRef.addListenerForSingleValueEvent(object : ValueEventListener {
+    publicidadesRef.addListenerForSingleValueEvent(object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
-            val publicidades = snapshot.children.map { it.key ?: "" }.filter { it.isNotEmpty() }
-            onSuccess(publicidades)
+            if (snapshot.exists()) {
+                val publicidades = snapshot.children.map { it.key ?: "" }.filter { it.isNotEmpty() }
+                onSuccess(publicidades)
+                println("Publicidades encontradas para $profile: $publicidades")
+            } else {
+                onSuccess(emptyList())
+                println("No se encontraron publicidades para el perfil: $profile")
+            }
         }
 
         override fun onCancelled(error: DatabaseError) {
@@ -84,7 +91,7 @@ fun loadPublicidadData(
     onSuccess: (Map<String, Any>) -> Unit,  // Callback de éxito que recibe los datos de la publicidad
     onFailure: (Exception) -> Unit  // Callback en caso de fallo
 ) {
-    // Referencia a la ruta de Firebase donde se encuentran los datos de la publicidad seleccionada
+    // Referencia a la ruta correcta según la estructura de Firebase
     val publicidadRef = FirebaseDatabase.getInstance().reference
         .child("CLAVE_STREAM_FB")
         .child("PUBLICIDADES")
@@ -101,18 +108,24 @@ fun loadPublicidadData(
                 // Extraer los valores de los campos de la publicidad
                 val nombrePublicidad = snapshot.child("nombre").getValue(String::class.java)
                 val rutaImagen = snapshot.child("ruta").getValue(String::class.java)
+                val urlVideo = snapshot.child("urlVideo").getValue(String::class.java) // NUEVO CAMPO
                 val fechaInicial = snapshot.child("fechaInicial").getValue(String::class.java)
                 val fechaFinal = snapshot.child("fechaFinal").getValue(String::class.java)
                 val guion = snapshot.child("guion").getValue(String::class.java)
+                val id = snapshot.child("id").getValue(String::class.java) // NUEVO CAMPO
+                val fechaCreacion = snapshot.child("fechaCreacion").getValue(Long::class.java) // NUEVO CAMPO
 
                 // Agregar los datos al mapa si no son nulos
                 nombrePublicidad?.let { publicidadData["nombre"] = it }
                 rutaImagen?.let { publicidadData["ruta"] = it }
+                urlVideo?.let { publicidadData["urlVideo"] = it } // NUEVO CAMPO
                 fechaInicial?.let { publicidadData["fechaInicial"] = it }
                 fechaFinal?.let { publicidadData["fechaFinal"] = it }
                 guion?.let { publicidadData["guion"] = it }
+                id?.let { publicidadData["id"] = it } // NUEVO CAMPO
+                fechaCreacion?.let { publicidadData["fechaCreacion"] = it } // NUEVO CAMPO
 
-                println("DENTRO DE LA FUNCION LOAD PUBLICIDAD: IMAGEN $rutaImagen")
+                println("CARGANDO PUBLICIDAD '$publicidad': Imagen=$rutaImagen, Video=$urlVideo")
                 // Llamar al callback de éxito con los datos de la publicidad
                 onSuccess(publicidadData)
             } else {
@@ -133,6 +146,7 @@ fun savePublicidad(
     profile: String,  // Nombre del perfil seleccionado
     nombre: String,  // Nombre de la publicidad (obligatorio)
     imageUrl: String?,  // URL de la imagen publicitaria (opcional)
+    videoUrl: String?,  // URL del video publicitario (opcional) - NUEVO CAMPO
     fechaInicial: String?,  // Fecha inicial de la publicidad (opcional)
     fechaFinal: String?,  // Fecha final de la publicidad (opcional)
     guion: String?,  // Guion o contenido de la publicidad (opcional)
@@ -145,16 +159,19 @@ fun savePublicidad(
         return
     }
 
-    // Si la URL de la imagen, fecha inicial, fecha final o guion están vacíos, guardamos un valor por defecto
+    // Crear datos con la estructura correcta, incluyendo urlVideo
     val publicidadData = mapOf(
         "nombre" to nombre,
-        "ruta" to (imageUrl ?: ""),  // Guardar una cadena vacía si no se selecciona una imagen
-        "fechaInicial" to (fechaInicial ?: ""),  // Guardar una cadena vacía si no se selecciona una fecha inicial
-        "fechaFinal" to (fechaFinal ?: ""),  // Guardar una cadena vacía si no se selecciona una fecha final
-        "guion" to (guion ?: "")  // Guardar una cadena vacía si no se selecciona un guion
+        "ruta" to (imageUrl ?: ""),  // URL de la imagen
+        "urlVideo" to (videoUrl ?: ""),  // URL del video - NUEVO CAMPO
+        "fechaInicial" to (fechaInicial ?: ""),
+        "fechaFinal" to (fechaFinal ?: ""),
+        "guion" to (guion ?: ""),
+        "id" to "${profile}_${nombre}_${System.currentTimeMillis()}", // ID único - NUEVO CAMPO
+        "fechaCreacion" to System.currentTimeMillis() // Timestamp de creación - NUEVO CAMPO
     )
 
-    // Referencia a la ruta de Firebase donde se guardará la publicidad
+    // Referencia a la ruta correcta según la estructura de Firebase
     val database = FirebaseDatabase.getInstance()
     val publicidadRef = database.reference
         .child("CLAVE_STREAM_FB")
@@ -165,10 +182,10 @@ fun savePublicidad(
     // Guardar los datos en Firebase
     publicidadRef.setValue(publicidadData).addOnCompleteListener { task ->
         if (task.isSuccessful) {
-            // Si la operación fue exitosa, llamar al callback de éxito
+            println("Publicidad '$nombre' guardada exitosamente en perfil '$profile'")
             onSuccess()
         } else {
-            // Si ocurrió un error, llamar al callback de fallo con la excepción
+            println("Error guardando publicidad: ${task.exception?.message}")
             task.exception?.let { onFailure(it) }
         }
     }
@@ -250,6 +267,7 @@ fun PantallaPublicidad(
     var selectedPublicidad by remember { mutableStateOf("") }
     var nombrePublicidad by remember { mutableStateOf("") }
     var imageUrl by remember { mutableStateOf("") }
+    var videoUrl by remember { mutableStateOf("") } // NUEVO CAMPO para video
     var fechaInicial by remember { mutableStateOf("") }
     var fechaFinal by remember { mutableStateOf("") }
     var guionPublicidad by remember { mutableStateOf("") }
@@ -368,6 +386,7 @@ fun PantallaPublicidad(
                             onSuccess = { data ->
                                 nombrePublicidad = data["nombre"] as? String ?: ""
                                 imageUrl = data["ruta"] as? String ?: ""
+                                videoUrl = data["urlVideo"] as? String ?: "" // NUEVO CAMPO
                                 fechaInicial = data["fechaInicial"] as? String ?: ""
                                 fechaFinal = data["fechaFinal"] as? String ?: ""
                                 guionPublicidad = data["guion"] as? String ?: ""
@@ -408,6 +427,7 @@ fun PantallaPublicidad(
                     onClick = {
                         nombrePublicidad = ""
                         imageUrl = ""
+                        videoUrl = "" // NUEVO CAMPO
                         fechaInicial = ""
                         fechaFinal = ""
                         guionPublicidad = ""
@@ -427,12 +447,14 @@ fun PantallaPublicidad(
                 PublicidadFormCard(
                     nombrePublicidad = nombrePublicidad,
                     imageUrl = imageUrl,
+                    videoUrl = videoUrl, // NUEVO CAMPO
                     fechaInicial = fechaInicial,
                     fechaFinal = fechaFinal,
                     guionPublicidad = guionPublicidad,
                     isUploading = isUploading,
                     uploadProgress = uploadProgress,
                     onNombreChange = { nombrePublicidad = it },
+                    onVideoUrlChange = { videoUrl = it }, // NUEVO CALLBACK
                     onFechaInicialChange = { fechaInicial = it },
                     onFechaFinalChange = { fechaFinal = it },
                     onGuionChange = { guionPublicidad = it },
@@ -446,6 +468,7 @@ fun PantallaPublicidad(
                                 profile = selectedProfile,
                                 nombre = nombrePublicidad,
                                 imageUrl = imageUrl.takeIf { it.isNotEmpty() },
+                                videoUrl = videoUrl.takeIf { it.isNotEmpty() }, // NUEVO CAMPO
                                 fechaInicial = fechaInicial.takeIf { it.isNotEmpty() },
                                 fechaFinal = fechaFinal.takeIf { it.isNotEmpty() },
                                 guion = guionPublicidad.takeIf { it.isNotEmpty() },
@@ -479,6 +502,7 @@ fun PantallaPublicidad(
                         selectedPublicidad = ""
                         nombrePublicidad = ""
                         imageUrl = ""
+                        videoUrl = "" // NUEVO CAMPO
                         fechaInicial = ""
                         fechaFinal = ""
                         guionPublicidad = ""
@@ -702,12 +726,14 @@ private fun PublicidadesListCard(
 private fun PublicidadFormCard(
     nombrePublicidad: String,
     imageUrl: String,
+    videoUrl: String, // NUEVO CAMPO
     fechaInicial: String,
     fechaFinal: String,
     guionPublicidad: String,
     isUploading: Boolean,
     uploadProgress: Int,
     onNombreChange: (String) -> Unit,
+    onVideoUrlChange: (String) -> Unit, // NUEVO CALLBACK
     onFechaInicialChange: (String) -> Unit,
     onFechaFinalChange: (String) -> Unit,
     onGuionChange: (String) -> Unit,
@@ -766,6 +792,18 @@ private fun PublicidadFormCard(
                 onSelectFromDevice = onSelectFromDevice,
                 onSelectFromStorage = onSelectFromStorage,
                 onClearImage = onClearImage
+            )
+
+            // NUEVO CAMPO: URL del video
+            OutlinedTextField(
+                value = videoUrl,
+                onValueChange = onVideoUrlChange,
+                label = { Text("URL del Video (opcional)") },
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = {
+                    Icon(Icons.Default.VideoLibrary, contentDescription = null)
+                },
+                placeholder = { Text("https://ejemplo.com/video.mp4") }
             )
 
             // Fechas
@@ -866,7 +904,7 @@ private fun ImageSection(
                         .fillMaxWidth()
                         .height(150.dp)
                         .clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Fit
                 )
             }
 
@@ -928,32 +966,70 @@ private fun ImageSection(
             OutlinedButton(
                 onClick = onSelectFromDevice,
                 modifier = Modifier.weight(1f),
-                enabled = !isUploading
+                enabled = !isUploading,
+                contentPadding = PaddingValues(12.dp)
             ) {
-                Icon(Icons.Default.Upload, contentDescription = null)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Subir")
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Upload,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        "Subir",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
             }
 
             OutlinedButton(
                 onClick = onSelectFromStorage,
                 modifier = Modifier.weight(1f),
-                enabled = !isUploading
+                enabled = !isUploading,
+                contentPadding = PaddingValues(12.dp)
             ) {
-                Icon(Icons.Default.CloudDownload, contentDescription = null)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Galería")
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        Icons.Default.CloudDownload,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        "Galería",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
             }
 
             if (imageUrl.isNotEmpty()) {
                 OutlinedButton(
                     onClick = onClearImage,
                     enabled = !isUploading,
+                    contentPadding = PaddingValues(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = MaterialTheme.colorScheme.error
                     )
                 ) {
-                    Icon(Icons.Default.Clear, contentDescription = "Limpiar")
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Clear,
+                            contentDescription = "Limpiar",
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            "Limpiar",
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
                 }
             }
         }

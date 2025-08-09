@@ -1167,19 +1167,7 @@ private fun ExpandableEditorCard(
 
             // Contenido expandible
             if (expanded) {
-                // 🆕 BOTÓN AL AIRE DIRECTO (NUEVO)
-                Button(
-                    onClick = onAlAireDirecto, // ← NUEVO CALLBACK
-                    modifier = Modifier.weight(1f),
-                    enabled = invitadoNombre.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.tertiary
-                    )
-                ) {
-                    Icon(Icons.Default.FlashOn, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("AL AIRE")
-                }
+
 
 
                 // [MANTENER todos los campos existentes: Nombre, Rol, Tema, Lugar...]
@@ -1188,6 +1176,7 @@ private fun ExpandableEditorCard(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+
                     OutlinedTextField(
                         value = invitadoNombre,
                         onValueChange = onInvitadoNombreChange,
@@ -1318,29 +1307,52 @@ private fun ExpandableEditorCard(
                             Text("Actualizar")
                         }
                     } else {
-                        // 🔄 Botones originales (modo agregar)
-                        Button(
-                            onClick = onLimpiarCampos,
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondary
-                            )
+                        // 🆕 NUEVA ESTRUCTURA: Column para organizar verticalmente
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp) // Espacio entre el botón superior y la fila inferior
                         ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Nuevo")
-                        }
+                            // 🆕 BOTÓN AL AIRE DIRECTO (arriba y solo)
+                            Button(
+                                onClick = onAlAireDirecto,
+                                modifier = Modifier.fillMaxWidth(), // Ocupa todo el ancho
+                                enabled = invitadoNombre.isNotBlank(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiary
+                                )
+                            ) {
+                                Icon(Icons.Default.FlashOn, contentDescription = null)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("AL AIRE")
+                            }
 
+                            // 🔄 Botones originales (modo agregar) - en una Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Button(
+                                    onClick = onLimpiarCampos,
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.secondary
+                                    )
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Nuevo")
+                                }
 
-
-                        Button(
-                            onClick = onAgregar,
-                            modifier = Modifier.weight(1f),
-                            enabled = invitadoNombre.isNotBlank()
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Guardar")
+                                Button(
+                                    onClick = onAgregar,
+                                    modifier = Modifier.weight(1f),
+                                    enabled = invitadoNombre.isNotBlank()
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Guardar")
+                                }
+                            }
                         }
                     }
                 }

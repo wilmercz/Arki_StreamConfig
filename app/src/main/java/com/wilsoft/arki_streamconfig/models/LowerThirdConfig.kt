@@ -19,15 +19,6 @@ data class LayoutConfig(
     val canvasVirtual: Dimensions = Dimensions(1920, 1080)
 )
 
-// Archivo: models/LogoConfig.kt
-data class LogoConfig(
-    val modo: LogoMode = LogoMode.SIMPLE,
-    val mostrar: Boolean = true,
-    val simple: LogoSimpleConfig = LogoSimpleConfig(),
-    val alianza: LogoAlianzaConfig = LogoAlianzaConfig(),
-    val rotacion: LogoRotacionConfig = LogoRotacionConfig()
-)
-
 enum class LogoMode(val displayName: String) {
     SIMPLE("Logo Simple"),
     ALIANZA("Logo Alianza"),
@@ -348,3 +339,38 @@ object PresetTemplates {
         "corporativo" to getPresetCorporativo()
     )
 }
+
+/**
+ * Configuración para logos aliados
+ */
+data class LogosAliadosConfig(
+    val habilitado: Boolean = false,
+    val logos: List<LogoAliadoItem> = emptyList()
+)
+
+/**
+ * Item individual de logo aliado
+ */
+data class LogoAliadoItem(
+    val id: String = "",
+    val nombre: String = "",
+    val url: String = "",
+    val activo: Boolean = true,
+    val orden: Int = 0
+)
+
+// ============================================================================
+// 2. MODIFICAR LogoConfig EXISTENTE EN LowerThirdConfig.kt
+// ============================================================================
+
+// REEMPLAZAR la data class LogoConfig existente por esta:
+data class LogoConfig(
+    val modo: LogoMode = LogoMode.SIMPLE,
+    val mostrar: Boolean = true,
+    val simple: LogoSimpleConfig = LogoSimpleConfig(),
+    val alianza: LogoAlianzaConfig = LogoAlianzaConfig(),
+    val rotacion: LogoRotacionConfig = LogoRotacionConfig(),
+    // ✅ AGREGAR ESTE CAMPO NUEVO:
+    val logosAliados: LogosAliadosConfig = LogosAliadosConfig()
+)
+

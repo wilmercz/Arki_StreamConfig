@@ -889,6 +889,35 @@ fun TabRecursos(
     var availablePublicidades by remember { mutableStateOf<List<StorageImageItem>>(emptyList()) }
     var isLoadingImages by remember { mutableStateOf(false) }
 
+   var isUploadingLogoAliado by remember { mutableStateOf(false) }
+    var uploadProgressLogoAliado by remember { mutableStateOf(0) }
+
+    // ✅ NUEVOS ESTADOS PARA LOGOS ALIADOS (agregar después de los existentes)
+    var showLogoAliadoSelector by remember { mutableStateOf(false) }
+    var logoAliadoEnEdicion by remember { mutableStateOf<Int?>(null) } // índice del logo en edición
+    var availableLogosAliados by remember { mutableStateOf<List<StorageImageItem>>(emptyList()) }
+
+
+    // ✅ NUEVAS FUNCIONES PARA LOGOS ALIADOS
+    fun seleccionarLogoAliadoDesdeStorage(indice: Int) {
+        logoAliadoEnEdicion = indice
+        showLogoAliadoSelector = true
+        coroutineScope.launch {
+            isLoadingImages = true
+            StorageExtensions.listImagesInFolder("logos")
+                .onSuccess { logos ->
+                    availableLogosAliados = logos
+                    isLoadingImages = false
+                }
+                .onFailure {
+                    isLoadingImages = false
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("Error cargando logos aliados")
+                    }
+                }
+        }
+    }
+
     // Funciones para seleccionar desde storage
     fun seleccionarLogoDesdeStorage() {
         showLogoSelector = true
@@ -995,9 +1024,56 @@ fun TabRecursos(
         }
     }
 
+
+    // ✅ NUEVO LAUNCHER PARA LOGOS ALIADOS (agregar después de los existentes)
+    // ✅ NUEVO LAUNCHER PARA LOGOS ALIADOS
+    val logoAliadoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { selectedUri ->
+            logoAliadoEnEdicion?.let { indice ->
+                coroutineScope.launch {
+                    isUploadingLogoAliado = true
+                    uploadProgressLogoAliado = 0
+
+                    val extension = getFileExtensionFromUri(context.contentResolver, selectedUri)
+                    val fileName = generateFileName("logo_aliado_$indice", extension)
+
+                    StorageExtensions.uploadImageWithMetadata(
+                        imageUri = selectedUri,
+                        path = "logos",
+                        fileName = fileName,
+                        contentResolver = context.contentResolver,
+                        onProgress = { progress -> uploadProgressLogoAliado = progress }
+                    ).onSuccess { downloadUrl ->
+                        // Actualizar lista de logos aliados
+                        val logosActuales = perfil.lowerThirdConfig.logo.logosAliados.logos.toMutableList()
+                        while (logosActuales.size <= indice) {
+                            logosActuales.add(LogoAliadoItem())
+                        }
+                        logosActuales[indice] = logosActuales[indice].copy(url = downloadUrl)
+
+                        val newLogosConfig = perfil.lowerThirdConfig.logo.logosAliados.copy(logos = logosActuales)
+                        val newLogoConfig = perfil.lowerThirdConfig.logo.copy(logosAliados = newLogosConfig)
+                        val newLowerThird = perfil.lowerThirdConfig.copy(logo = newLogoConfig)
+                        onPerfilChange(perfil.copy(lowerThirdConfig = newLowerThird))
+
+                        isUploadingLogoAliado = false
+                        snackbarHostState.showSnackbar("Logo aliado ${indice + 1} subido")
+                        logoAliadoEnEdicion = null
+                    }.onFailure { error ->
+                        isUploadingLogoAliado = false
+                        snackbarHostState.showSnackbar("Error: ${error.message}")
+                        logoAliadoEnEdicion = null
+                    }
+                }
+            }
+        }
+    }
+
     // USAR LA FUNCIÓN ResourcesTabCompleta QUE YA EXISTE
-    // Extraer datos del PerfilStreamConfig y convertirlos a parámetros individuales
     ResourcesTabCompleta(
+        // Parámetros existentes
         urlLogo = perfil.lowerThirdConfig.logo.simple.url,
         urlImagenPublicidad = perfil.lowerThirdConfig.publicidad.url,
         onUrlLogoChange = { newUrl ->
@@ -1016,7 +1092,47 @@ fun TabRecursos(
         onSeleccionarPublicidadDispositivo = { publicidadLauncher.launch("image/*") },
         onSeleccionarPublicidadStorage = { seleccionarPublicidadDesdeStorage() },
         isUploading = isUploading,
-        uploadProgress = uploadProgress
+        uploadProgress = uploadProgress,
+
+        // ✅ NUEVOS PARÁMETROS PARA LOGOS ALIADOS
+        logosAliadosHabilitado = perfil.lowerThirdConfig.logo.logosAliados.habilitado,
+        logosAliados = perfil.lowerThirdConfig.logo.logosAliados.logos.map { it.url },
+        onLogosAliadosHabilitadoChange = { enabled ->
+            val newLogosConfig = perfil.lowerThirdConfig.logo.logosAliados.copy(habilitado = enabled)
+            val newLogoConfig = perfil.lowerThirdConfig.logo.copy(logosAliados = newLogosConfig)
+            val newLowerThird = perfil.lowerThirdConfig.copy(logo = newLogoConfig)
+            onPerfilChange(perfil.copy(lowerThirdConfig = newLowerThird))
+        },
+        onLogoAliadoChange = { indice, nuevaUrl ->
+            val logosActuales = perfil.lowerThirdConfig.logo.logosAliados.logos.toMutableList()
+            while (logosActuales.size <= indice) {
+                logosActuales.add(LogoAliadoItem())
+            }
+            logosActuales[indice] = logosActuales[indice].copy(url = nuevaUrl)
+
+            val newLogosConfig = perfil.lowerThirdConfig.logo.logosAliados.copy(logos = logosActuales)
+            val newLogoConfig = perfil.lowerThirdConfig.logo.copy(logosAliados = newLogosConfig)
+            val newLowerThird = perfil.lowerThirdConfig.copy(logo = newLogoConfig)
+            onPerfilChange(perfil.copy(lowerThirdConfig = newLowerThird))
+        },
+        onSeleccionarLogoAliadoDispositivo = { indice ->
+            logoAliadoEnEdicion = indice
+            logoAliadoLauncher.launch("image/*")
+        },
+        onSeleccionarLogoAliadoStorage = { indice -> seleccionarLogoAliadoDesdeStorage(indice) },
+        onEliminarLogoAliado = { indice ->
+            val logosActuales = perfil.lowerThirdConfig.logo.logosAliados.logos.toMutableList()
+            if (indice < logosActuales.size) {
+                logosActuales.removeAt(indice)
+                val newLogosConfig = perfil.lowerThirdConfig.logo.logosAliados.copy(logos = logosActuales)
+                val newLogoConfig = perfil.lowerThirdConfig.logo.copy(logosAliados = newLogosConfig)
+                val newLowerThird = perfil.lowerThirdConfig.copy(logo = newLogoConfig)
+                onPerfilChange(perfil.copy(lowerThirdConfig = newLowerThird))
+            }
+        },
+        isUploadingLogoAliado = isUploadingLogoAliado,
+        uploadProgressLogoAliado = uploadProgressLogoAliado,
+        logoAliadoEnEdicion = logoAliadoEnEdicion
     )
 
     // Diálogos (igual que en tu código original)
@@ -1060,6 +1176,184 @@ fun TabRecursos(
             }
         )
     }
+
+    // ✅ NUEVO DIÁLOGO PARA LOGOS ALIADOS
+    if (showLogoAliadoSelector) {
+        ImageSelectorDialog(
+            title = "Seleccionar Logo Aliado ${(logoAliadoEnEdicion ?: 0) + 1}",
+            images = availableLogos,
+            isLoading = isLoadingImages,
+            currentImageUrl = logoAliadoEnEdicion?.let { indice ->
+                perfil.lowerThirdConfig.logo.logosAliados.logos.getOrNull(indice)?.url ?: ""
+            } ?: "",
+            onImageSelect = { storageItem ->
+                logoAliadoEnEdicion?.let { indice ->
+                    val logosActuales = perfil.lowerThirdConfig.logo.logosAliados.logos.toMutableList()
+                    while (logosActuales.size <= indice) {
+                        logosActuales.add(LogoAliadoItem())
+                    }
+                    logosActuales[indice] = logosActuales[indice].copy(url = storageItem.downloadUrl)
+
+                    val newLogosConfig = perfil.lowerThirdConfig.logo.logosAliados.copy(logos = logosActuales)
+                    val newLogoConfig = perfil.lowerThirdConfig.logo.copy(logosAliados = newLogosConfig)
+                    val newLowerThird = perfil.lowerThirdConfig.copy(logo = newLogoConfig)
+                    onPerfilChange(perfil.copy(lowerThirdConfig = newLowerThird))
+                }
+                showLogoAliadoSelector = false
+                logoAliadoEnEdicion = null
+            },
+            onDismiss = {
+                showLogoAliadoSelector = false
+                logoAliadoEnEdicion = null
+            },
+            onUploadNew = {
+                showLogoAliadoSelector = false
+                logoAliadoLauncher.launch("image/*")
+            }
+        )
+    }
+
+}
+
+
+@Composable
+fun LogoAliadoSlot(
+    index: Int,
+    logoUrl: String,
+    onSubirImagen: () -> Unit,
+    onSeleccionarStorage: () -> Unit,
+    onEliminar: () -> Unit,
+    isUploading: Boolean = false,
+    uploadProgress: Int = 0,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.height(100.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (logoUrl.isNotEmpty())
+                MaterialTheme.colorScheme.surface
+            else
+                MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            if (logoUrl.isNotEmpty()) {
+                // Logo cargado
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = "Logo aliado ${index + 1}",
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(RoundedCornerShape(6.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "Logo ${index + 1}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    // Botones de acción compactos
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        IconButton(
+                            onClick = onSeleccionarStorage,
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Cambiar",
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onEliminar,
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Eliminar",
+                                modifier = Modifier.size(12.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Slot vacío
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    if (isUploading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "$uploadProgress%",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Agregar logo",
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Text(
+                            text = "Logo ${index + 1}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        // Botones de acción compactos
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            IconButton(
+                                onClick = onSubirImagen,
+                                modifier = Modifier.size(20.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Upload,
+                                    contentDescription = "Subir",
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = onSeleccionarStorage,
+                                modifier = Modifier.size(20.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Folder,
+                                    contentDescription = "Storage",
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 
@@ -1074,7 +1368,18 @@ fun ResourcesTabCompleta(
     onSeleccionarPublicidadDispositivo: () -> Unit,
     onSeleccionarPublicidadStorage: () -> Unit,
     isUploading: Boolean = false,
-    uploadProgress: Int = 0
+    uploadProgress: Int = 0,
+    // ✅ NUEVOS PARÁMETROS PARA LOGOS ALIADOS
+    logosAliadosHabilitado: Boolean = false,
+    logosAliados: List<String> = emptyList(), // Lista de URLs
+    onLogosAliadosHabilitadoChange: (Boolean) -> Unit = {},
+    onLogoAliadoChange: (Int, String) -> Unit = { _, _ -> }, // índice, nueva URL
+    onSeleccionarLogoAliadoDispositivo: (Int) -> Unit = {},
+    onSeleccionarLogoAliadoStorage: (Int) -> Unit = {},
+    onEliminarLogoAliado: (Int) -> Unit = {},
+    isUploadingLogoAliado: Boolean = false,
+    uploadProgressLogoAliado: Int = 0,
+    logoAliadoEnEdicion: Int? = null
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1194,9 +1499,13 @@ fun ResourcesTabCompleta(
                             modifier = Modifier.weight(1f),
                             enabled = !isUploading
                         ) {
-                            Icon(Icons.Default.Upload, contentDescription = null)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Subir")
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(Icons.Default.Upload, contentDescription = null)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("Subir")
+                            }
                         }
 
                         OutlinedButton(
@@ -1204,9 +1513,13 @@ fun ResourcesTabCompleta(
                             modifier = Modifier.weight(1f),
                             enabled = !isUploading
                         ) {
-                            Icon(Icons.Default.CloudDownload, contentDescription = null)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Galería")
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(Icons.Default.CloudDownload, contentDescription = null)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("Galería")
+                            }
                         }
 
                         if (urlLogo.isNotEmpty()) {
@@ -1217,10 +1530,17 @@ fun ResourcesTabCompleta(
                                     contentColor = MaterialTheme.colorScheme.error
                                 )
                             ) {
-                                Icon(Icons.Default.Clear, contentDescription = "Limpiar")
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Limpiar")
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("Limpiar")
+                                }
                             }
                         }
                     }
+
 
                     /*
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1346,6 +1666,102 @@ fun ResourcesTabCompleta(
                 }
             }
         }
+
+        // ✅ NUEVA SECCIÓN - Logos Aliados
+        item {
+                    SectionCard("🤝 Logos Aliados") {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            // Toggle principal
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Mostrar logos aliados",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Exhibe logos de medios aliados o patrocinadores",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                Switch(
+                                    checked = logosAliadosHabilitado,
+                                    onCheckedChange = onLogosAliadosHabilitadoChange
+                                )
+                            }
+
+                            // Solo mostrar controles si está habilitado
+                            if (logosAliadosHabilitado) {
+                                Text(
+                                    text = "Configurar logos aliados (${logosAliados.filter { it.isNotEmpty() }.size}/10)",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                // Grid 2x5 de logos aliados
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    for (row in 0..1) { // 2 filas
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            for (col in 0..3) { // 5 columnas
+                                                val index = row * 5 + col
+                                                val logoUrl = logosAliados.getOrNull(index) ?: ""
+
+                                                LogoAliadoSlot(
+                                                    index = index,
+                                                    logoUrl = logoUrl,
+                                                    onSubirImagen = { onSeleccionarLogoAliadoDispositivo(index) },
+                                                    onSeleccionarStorage = { onSeleccionarLogoAliadoStorage(index) },
+                                                    onEliminar = { onEliminarLogoAliado(index) },
+                                                    isUploading = isUploadingLogoAliado && logoAliadoEnEdicion == index,
+                                                    uploadProgress = if (logoAliadoEnEdicion == index) uploadProgressLogoAliado else 0,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Información adicional
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Info,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Los logos aliados aparecerán en la esquina inferior derecha durante la transmisión",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
     }
 }
 
