@@ -594,6 +594,35 @@ fun PantallaGeneradorCaracteres(
         }
     }
 
+    // 4️⃣ FUNCIÓN PARA DETENER LA TRANSMISIÓN EN VIVO
+    fun stopAiring() {
+        airingButtonState = AiringButtonState.PROCESSING
+
+        val updates = mapOf(
+            "Mostrar_Invitado" to false,
+            "Mostrar_Tema" to false,
+            "Mostrar_SubTema" to false,
+            "Mostrar_Publicidad" to false
+        )
+
+        firebaseRepository.saveData(
+            "CLAVE_STREAM_FB/STREAM_LIVE/GRAFICOS",
+            updates,
+            onSuccess = {
+                airingButtonState = AiringButtonState.NORMAL
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("📴 Transmisión detenida")
+                }
+                // Los estados se actualizarán automáticamente por el listener
+            },
+            onFailure = { error ->
+                airingButtonState = AiringButtonState.NORMAL
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("❌ Error al detener: ${error.message}")
+                }
+            }
+        )
+    }
 
     // ================================
     // CONFIGURACIÓN DE LISTENERS Y CARGA INICIAL (OPTIMIZADA)
@@ -909,7 +938,8 @@ fun PantallaGeneradorCaracteres(
                                 airingButtonState = airingButtonState,
                                 countdownTime = countdownTime,
                                 onStartAiring = { startAiringProcess() },
-                                onCancelAiring = { cancelAiringProcess() }
+                                onCancelAiring = { cancelAiringProcess() },
+                                onStopAiring = { stopAiring() }
                             )
                         }
 
@@ -1375,7 +1405,8 @@ private fun ExpandableEditorCard(
     airingButtonState: AiringButtonState = AiringButtonState.NORMAL,
     countdownTime: Int = 0,
     onStartAiring: () -> Unit = {},
-    onCancelAiring: () -> Unit = {}
+    onCancelAiring: () -> Unit = {},
+    onStopAiring: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1397,7 +1428,6 @@ private fun ExpandableEditorCard(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header con indicador de modo
             // Header con indicador de modo
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1523,41 +1553,27 @@ private fun ExpandableEditorCard(
                     }
                 }
 
-                // Campo Lugar (mantener igual)
-                var expandedPlaces by remember { mutableStateOf(false) }
-                Box {
-                    OutlinedTextField(
-                        value = selectedPlace,
-                        onValueChange = { /* No editable directamente */ },
-                        label = { Text("📍 Lugar") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { expandedPlaces = true },
-                        enabled = false,
-                        trailingIcon = {
-                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Seleccionar lugar")
-                        }
-                    )
-                    DropdownMenu(
-                        expanded = expandedPlaces,
-                        onDismissRequest = { expandedPlaces = false }
-                    ) {
-                        availablePlaces.forEach { lugar ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        lugar,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                },
-                                onClick = {
-                                    onPlaceChange(lugar)
-                                    expandedPlaces = false
-                                }
-                            )
-                        }
+                // Campo Lugar - Simple y compacto
+                OutlinedTextField(
+                    value = selectedPlace,
+                    onValueChange = onPlaceChange,
+                    label = {
+                        Text(
+                            "📍 Lugar",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.bodySmall, // Texto pequeño
+                    singleLine = true,
+                    placeholder = {
+                        Text(
+                            "Ej: Nombre del Pueblo (Nueva Loja)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
                     }
-                }
+                )
 
                 // 🔄 BOTONES MEJORADOS CON LÓGICA CONDICIONAL
                 Row(
@@ -1606,7 +1622,8 @@ private fun ExpandableEditorCard(
                                 airingButtonState = airingButtonState,
                                 countdownTime = countdownTime,
                                 onStartAiring = onStartAiring,
-                                onCancelAiring = onCancelAiring
+                                onCancelAiring = onCancelAiring,
+                                onStopAiring = onStopAiring
                             )
 
                             // 🔄 Botones originales (modo agregar) - en una Row
@@ -2468,6 +2485,7 @@ fun SmartAirButton(
     countdownTime: Int,
     onStartAiring: () -> Unit,
     onCancelAiring: () -> Unit,
+    onStopAiring: () -> Unit,
     enabled: Boolean = true
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulsing")
@@ -2493,7 +2511,7 @@ fun SmartAirButton(
         isOnAir -> {
             buttonColor = Color.Red.copy(alpha = pulseAlpha)
             contentColor = Color.White
-            buttonText = "🔴 EN VIVO"
+            buttonText = "📴 DETENER VIVO" // 🔧 TEXTO MÁS CLARO
             buttonIcon = Icons.Default.Stop
         }
         airingButtonState == AiringButtonState.COUNTDOWN -> {
@@ -2521,26 +2539,30 @@ fun SmartAirButton(
     Column {
         Button(
             onClick = {
-                when (airingButtonState) {
-                    AiringButtonState.NORMAL -> {
+                when {
+                    // 🆕 NUEVO: Si está al aire, detener transmisión
+                    isOnAir -> {
+                        onStopAiring()
+                    }
+                    airingButtonState == AiringButtonState.NORMAL -> {
                         if (hasRequiredContent) {
                             onStartAiring()
                         }
                     }
-                    AiringButtonState.COUNTDOWN -> {
+                    airingButtonState == AiringButtonState.COUNTDOWN -> {
                         onCancelAiring()
                     }
-                    else -> { /* No hacer nada durante PROCESSING */ }
+                    // Durante PROCESSING no hacer nada
                 }
             },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),
             enabled = enabled && (airingButtonState != AiringButtonState.PROCESSING) &&
-                    (hasRequiredContent || airingButtonState == AiringButtonState.COUNTDOWN),
+                    (hasRequiredContent || airingButtonState == AiringButtonState.COUNTDOWN || isOnAir),
             colors = ButtonDefaults.buttonColors(
-                containerColor = buttonColor, // 🔧 CORREGIDO: Sin .first
-                contentColor = contentColor,   // 🔧 CORREGIDO: Sin .second
+                containerColor = buttonColor,
+                contentColor = contentColor,
                 disabledContainerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
                 disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             ),
@@ -2560,7 +2582,7 @@ fun SmartAirButton(
                     )
                 } else {
                     Icon(
-                        buttonIcon, // 🔧 CORREGIDO: Sin .second
+                        imageVector = buttonIcon,
                         contentDescription = null,
                         modifier = Modifier.size(20.dp)
                     )
@@ -2569,14 +2591,14 @@ fun SmartAirButton(
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Text(
-                    text = buttonText, // 🔧 CORREGIDO: Sin .first
+                    text = buttonText,
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleSmall
                 )
             }
         }
 
-        // Mensaje de estado/advertencia
+        // 🔧 MENSAJES DE ESTADO MEJORADOS CON MEJOR VISIBILIDAD
         when {
             !hasRequiredContent && airingButtonState == AiringButtonState.NORMAL -> {
                 Row(
@@ -2584,7 +2606,7 @@ fun SmartAirButton(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Default.Warning,
+                        imageVector = Icons.Default.Warning,
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.error
@@ -2605,7 +2627,7 @@ fun SmartAirButton(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Default.Info,
+                        imageVector = Icons.Default.Info,
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.primary
@@ -2621,23 +2643,44 @@ fun SmartAirButton(
             }
 
             isOnAir -> {
-                Row(
-                    modifier = Modifier.padding(top = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                // 🔧 MEJORADO: Fondo oscuro y texto blanco para mejor visibilidad
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF1B5E20) // Verde oscuro para fondo
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = Color.Green
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Información transmitiendo en vivo",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Green,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "🔴 TRANSMITIENDO EN VIVO",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "• Haz clic para detener",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontStyle = FontStyle.Italic
+                        )
+                    }
                 }
             }
         }
