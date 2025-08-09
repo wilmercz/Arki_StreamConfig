@@ -1,3 +1,4 @@
+// Archivo: PantallaPublicidad.kt - Versión Mejorada (Con funciones organizadas)
 package com.wilsoft.arki_streamconfig
 
 // Importaciones de Jetpack Compose para UI
@@ -5,548 +6,76 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-//import androidx.compose.ui.graphics.Color
-//import androidx.navigation.NavController
-import coil.compose.rememberAsyncImagePainter
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import coil.compose.AsyncImage
 import androidx.compose.foundation.Image
 
 // Importaciones de corutinas para manejar operaciones asíncronas
-//import kotlinx.coroutines.launch
-//import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 
-// Importaciones de Firebase para cargar datos y subir archivos
+// Importaciones de Firebase
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
-
-// Para mostrar imágenes si usas Coil
-//import coil.compose.rememberImagePainter
-
-// Importa las clases para los íconos de Material Design
-import androidx.compose.material.icons.Icons  // Importa la clase Icons
-import androidx.compose.material.icons.filled.*  // Importa los íconos rellenos (Edit, Delete, Add, etc.)
-
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import android.net.Uri
-//import android.content.Intent
-import java.util.UUID
-
-//onDataChange y onCancelled
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 
+// Para selección de archivos
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
+import java.util.UUID
 
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.unit.dp
+// Importa las clases para los íconos
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.ui.res.painterResource
+// Importaciones para usar componentes existentes
+import com.wilsoft.arki_streamconfig.utilidades.StorageExtensions
+import com.wilsoft.arki_streamconfig.utilidades.StorageImageItem
+import com.wilsoft.arki_streamconfig.components.AdvancedImageSelector
 
-//fun PantallaPublicidad(
-//    firebaseRepository: FirebaseRepository,  // Repositorio de Firebase para cargar perfiles y publicidades
-//    navController: NavController,  // Controlador de navegación
-//    scope: CoroutineScope = rememberCoroutineScope()  // Alcance de las corutinas
-//) {
-//}
+// ================================
+// FUNCIONES DE FIREBASE (GLOBALES)
+// ================================
 
-
-// Comienza la función principal de la pantalla de publicidad
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun PantallaPublicidad(
-firebaseRepository: FirebaseRepository  // Eliminar scope si no lo necesitas
-) {
-    // Variables de estado
-    var selectedProfile by remember { mutableStateOf("") }  // Almacena el perfil seleccionado
-    var perfilesList by remember { mutableStateOf(listOf<String>()) }  // Lista de perfiles cargada desde Firebase
-    var publicidadesList by remember { mutableStateOf(listOf<String>()) }  // Lista de publicidades asociadas al perfil
-    var selectedPublicidad by remember { mutableStateOf("") }  // Publicidad seleccionada
-    var nombrePublicidad by remember { mutableStateOf("") }  // Nombre de la publicidad (nuevo o editado)
-    var imageUrl by remember { mutableStateOf("") }  // URL de la imagen publicitaria
-    var fechaInicial by remember { mutableStateOf("") }  // Fecha inicial seleccionada
-    var fechaFinal by remember { mutableStateOf("") }  // Fecha final seleccionada
-    var guionPublicidad by remember { mutableStateOf("") }  // Guion de la publicidad
-    var isEditing by remember { mutableStateOf(false) }  // Controla si estamos en modo edición o nuevo
-    var imageUri by remember { mutableStateOf<Uri?>(null) }  // Declarar variable para la URI de la imagen seleccionada
-
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    // Declaración del lanzador para abrir el selector de archivos
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        imageUri = uri  // Guardar la URI seleccionada
-        if (uri != null) {
-            println("Imagen seleccionada: $uri")
-
-            // Subir la imagen a Firebase al seleccionar una
-            uploadImageToFirebase(
-                imageUri = uri,
-                onSuccess = { url ->
-                    imageUrl = url  // Actualizar el estado con la URL de la imagen
-                    println("Imagen subida exitosamente: $url")
-                },
-                onFailure = { exception ->
-                    println("Error al subir la imagen: ${exception.message}")
-                }
-            )
-        } else {
-            println("No se seleccionó ninguna imagen")
-        }
-    }
-
-
-    //INICIA BLOQUE DE CARGA DE PERFILES
-    // Cargar los perfiles desde Firebase cuando se inicia la pantalla
-    LaunchedEffect(Unit) {
-        firebaseRepository.loadProfiles(onSuccess = { perfiles ->
-            perfilesList = perfiles  // Almacenar la lista de perfiles
-        }, onFailure = { exception ->
-            println("Error cargando perfiles: ${exception.message}")
-        })
-    }
-    //FIN DEL BLOQUE DE CARGA DE PERFILES
-
-
-
-
-    // Comienza la UI
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())  // Habilitar scroll vertical para pantallas pequeñas
-            .padding(16.dp)
-    ) {
-
-    // INICIA BLOQUE DE SELECCIÓN DE PERFIL
-        var expanded by remember { mutableStateOf(false) }  // Controla si el menú está expandido
-
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = !expanded }  // Alternar el menú desplegable
-        ) {
-            TextField(
-                value = selectedProfile,  // Muestra el perfil seleccionado
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Seleccionar perfil") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .menuAnchor()  // Ancla para el menú desplegable
-            )
-
-            ExposedDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }  // Cerrar el menú cuando se hace clic afuera
-            ) {
-                perfilesList.forEach { perfil ->
-                    DropdownMenuItem(
-                        text = { Text(perfil) },
-                        onClick = {
-                            selectedProfile = perfil  // Actualizar el perfil seleccionado
-                            expanded = false  // Cerrar el menú
-                            // INICIA BLOQUE DE CARGA DE PUBLICIDADES DEL PERFIL
-                            loadPublicidadesForProfile(
-                                profile = perfil,
-                                onSuccess = { publicidades ->
-                                    publicidadesList = publicidades  // Actualiza la lista de publicidades
-                                    println("Publicidades cargadas: $publicidades")  // Agrega esta línea para imprimir los datos cargados
-                                },
-                                onFailure = { exception ->
-                                    println("Error cargando publicidades: ${exception.message}")
-                                }
-                            )
-                            // FIN DEL BLOQUE DE CARGA DE PUBLICIDADES DEL PERFIL
-                        }
-                    )
-                }
-            }
-        }
-        // FIN DEL BLOQUE DE SELECCIÓN DE PERFIL
-
-        var expandedPublicidades by remember { mutableStateOf(false) }
-
-        // BLOQUE DE MOSTRAR LISTA DE PUBLICIDADES
-        if (publicidadesList.isNotEmpty()) {
-            ExposedDropdownMenuBox(
-                expanded = expandedPublicidades,
-                onExpandedChange = { expandedPublicidades = !expandedPublicidades }  // Controlar el menú desplegable de publicidades
-            ) {
-                TextField(
-                    value = selectedPublicidad,  // Mostrar la publicidad seleccionada
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Seleccionar publicidad") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedPublicidades) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor()  // Anclar el menú
-                )
-
-                ExposedDropdownMenu(
-                    expanded = expandedPublicidades,
-                    onDismissRequest = { expandedPublicidades = false }  // Cerrar el menú al hacer clic afuera
-                ) {
-                    publicidadesList.forEach { publicidad ->
-                        DropdownMenuItem(
-                            text = { Text(publicidad) },
-                            onClick = {
-                                selectedPublicidad = publicidad  // Actualizar la publicidad seleccionada
-                                expandedPublicidades = false  // Cerrar el menú
-                                println("Publicidad seleccionada: $publicidad")  // Imprimir la selección
-                                // Cargar los datos de la publicidad seleccionada
-                                loadPublicidadData(
-                                    profile = selectedProfile,
-                                    publicidad = selectedPublicidad,
-                                    onSuccess = { data ->
-                                        // Actualizar las variables de estado con los datos de Firebase
-                                        nombrePublicidad = data["nombre"] as String
-                                        imageUrl = data["ruta"] as String
-                                        fechaInicial = data["fechaInicial"] as String
-                                        fechaFinal = data["fechaFinal"] as String
-                                        guionPublicidad = data["guion"] as String
-                                        isEditing = true  // Cambiar a modo edición para mostrar el formulario
-                                        println("Publicidad seleccionada imagen: $imageUrl")  // Imprimir la selección
-                                    },
-                                    onFailure = { exception ->
-                                        println("Error cargando datos de la publicidad: ${exception.message}")
-                                    }
-                                )
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-
-               // Agregar aquí el código del botón "Crear nueva publicidad"
-        if (selectedProfile.isNotEmpty()) {
-            Button(onClick = {
-                // Limpiar los campos para una nueva publicidad
-                nombrePublicidad = ""
-                imageUrl = ""
-                fechaInicial = ""
-                fechaFinal = ""
-                guionPublicidad = ""
-                isEditing = true  // Cambiar a modo creación de nueva publicidad
-            }) {
-                Icon(Icons.Default.Add, contentDescription = "Nueva publicidad")
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Crear nueva publicidad")
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-// FIN DEL BOTÓN "CREAR NUEVA PUBLICIDAD"
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Mostrar botones de acción si hay una publicidad seleccionada
-        if (selectedPublicidad.isNotEmpty()) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                //INICIA BLOQUE BOTÓN EDITAR
-                Button(onClick = {
-                    isEditing = true  // Cambiar a modo edición
-                }) {
-                    Icon(Icons.Default.Edit, contentDescription = "Editar publicidad")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Editar publicidad")
-                }
-                //FIN DEL BLOQUE BOTÓN EDITAR
-
-                //INICIA BLOQUE BOTÓN ELIMINAR
-                Button(onClick = {
-                    // Eliminar la publicidad seleccionada
-                    deletePublicidad(
-                        profile = selectedProfile,
-                        publicidad = selectedPublicidad,
-                        onSuccess = {
-                            println("Publicidad eliminada exitosamente")
-                            publicidadesList = publicidadesList.filter { it != selectedPublicidad }
-                            selectedPublicidad = ""  // Limpiar la selección
-                        },
-                        onFailure = { exception ->
-                            println("Error eliminando publicidad: ${exception.message}")
-                        }
-                    )
-                }) {
-                    Icon(Icons.Default.Delete, contentDescription = "Eliminar publicidad")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Eliminar publicidad")
-                }
-                //FIN DEL BLOQUE BOTÓN ELIMINAR
-            }
-        }
-
-
-        //INICIA BLOQUE DE FORMULARIO DE PUBLICIDAD
-        if (isEditing || nombrePublicidad.isNotEmpty()) {
-            // Campo de texto para el nombre de la publicidad
-            Text("Nombre de la publicidad")
-            TextField(
-                value = nombrePublicidad,
-                onValueChange = { nombrePublicidad = it },  // Vinculado a la variable nombrePublicidad
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            //INICIA BLOQUE DE SELECCIÓN DE IMAGEN
-            // Botón para seleccionar una imagen desde el dispositivo (luego subirla a GitHub o Firebase)
-            // 2. Botón que lanza el selector de imágenes
-            Button(onClick = {
-                launcher.launch("image/*")  // Abrir el explorador de imágenes
-            }) {
-                Text("Seleccionar imagen")
-            }
-           // Button(onClick = {
-                // Aquí puedes seleccionar la función: subir a GitHub o Firebase Storage
-             //   if (imageUri != null) {
-             //       uploadImageToFirebase(
-             //           imageUri = imageUri!!,  // Ya verificamos que no es nulo
-             //           onSuccess = { url ->
-             //               imageUrl = url
-             //               println("Imagen subida exitosamente: $url")
-             //           },
-              //          onFailure = { exception ->
-              //              println("Error al subir la imagen: ${exception.message}")
-              //          }
-              //      )
-             //   } else {
-             //       println("Error: No se ha seleccionado ninguna imagen")
-            //    }
-           // }) {
-           //     Text("Seleccionar imagen")
-          //  }
-
-            // Mostrar la URL de la imagen seleccionada/subida
-            TextField(
-                value = imageUrl,
-                onValueChange = { imageUrl = it },  // Vinculado a la variable imageUrl
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("URL de la imagen") }
-            )
-            //FIN DEL BLOQUE DE SELECCIÓN DE IMAGEN
-
-            // Comprobar si la URL de la imagen es válida y mostrarla
-            if (imageUrl.isNotEmpty()) {
-                val painter = rememberAsyncImagePainter(model = imageUrl)
-
-                // Verificar si la imagen se carga correctamente
-                if (painter.state is coil.compose.AsyncImagePainter.State.Error) {
-                    // Si ocurre un error, mostrar la imagen de marcador de posición
-                    Image(
-                        painter = painterResource(id = R.drawable.placeholder_image),  // Imagen de recurso local
-                        contentDescription = "Imagen no disponible",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(2f)  // Relación de aspecto 2:1
-                    )
-                } else {
-                    // Mostrar la imagen si la URL es válida
-                    Image(
-                        painter = painter,
-                        contentDescription = "Imagen de la publicidad",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(2f)
-                    )
-                }
-            } else {
-                // Mostrar imagen de marcador de posición si no hay imagen
-                Image(
-                    painter = painterResource(id = R.drawable.placeholder_image),  // Imagen de recurso local
-                    contentDescription = "Sin imagen seleccionada",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(2f)  // Relación de aspecto 2:1
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            //INICIA BLOQUE DE FECHA INICIAL Y FINAL
-            // Campos para las fechas
-            Text("Fecha inicial")
-            TextField(
-                value = fechaInicial,
-                onValueChange = { fechaInicial = it },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text("Fecha final")
-            TextField(
-                value = fechaFinal,
-                onValueChange = { fechaFinal = it },
-                modifier = Modifier.fillMaxWidth()
-            )
-            //FIN DEL BLOQUE DE FECHA INICIAL Y FINAL
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            //INICIA BLOQUE DE GUIÓN PUBLICITARIO
-            // Campo de texto para el guion de la publicidad
-            Text("Guion de la publicidad")
-            TextField(
-                value = guionPublicidad,
-                onValueChange = { guionPublicidad = it },
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = TextStyle(fontSize = 16.sp),
-                maxLines = 5
-            )
-            //FIN DEL BLOQUE DE GUIÓN PUBLICITARIO
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // INICIA BLOQUE BOTONES "CANCELAR" Y "GUARDAR"
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-
-                // Botón "Cancelar" a la izquierda
-                Button(
-                    onClick = {
-                        // Cancelar la operación y limpiar los campos
-                        nombrePublicidad = ""
-                        imageUrl = ""
-                        fechaInicial = ""
-                        fechaFinal = ""
-                        guionPublicidad = ""
-                        isEditing = false
-                        selectedPublicidad = ""
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = "Cancelar")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cancelar")
-                }
-
-                Spacer(modifier = Modifier.width(16.dp))  // Espaciado entre botones
-
-                // Botón "Guardar" a la derecha
-                Button(
-                    onClick = {
-                        // Guardar o actualizar la publicidad en Firebase
-                        savePublicidad(
-                            profile = selectedProfile,
-                            nombre = nombrePublicidad,
-                            imageUrl = imageUrl.takeIf { it.isNotEmpty() },  // Solo si no está vacío
-                            fechaInicial = fechaInicial.takeIf { it.isNotEmpty() },
-                            fechaFinal = fechaFinal.takeIf { it.isNotEmpty() },
-                            guion = guionPublicidad.takeIf { it.isNotEmpty() },
-                            onSuccess = {
-                                println("Publicidad guardada exitosamente")
-
-                                // Limpiar los campos del formulario
-                                nombrePublicidad = ""
-                                imageUrl = ""
-                                fechaInicial = ""
-                                fechaFinal = ""
-                                guionPublicidad = ""
-
-                                // Ocultar el formulario (modo creación o edición)
-                                isEditing = false
-                                selectedPublicidad = ""
-
-                                // Recargar las publicidades del perfil seleccionado
-                                loadPublicidadesForProfile(
-                                    profile = selectedProfile,
-                                    onSuccess = { publicidades ->
-                                        publicidadesList = publicidades  // Actualiza la lista de publicidades
-                                    },
-                                    onFailure = { exception ->
-                                        println("Error recargando publicidades: ${exception.message}")
-                                    }
-                                )
-                            },
-                            onFailure = { exception ->
-                                println("Error guardando publicidad: ${exception.message}")
-                            }
-                        )
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.Save, contentDescription = "Guardar")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Guardar")
-                }
-            }
-// FIN DEL BLOQUE BOTONES "CANCELAR" Y "GUARDAR"
-
-        }
-        //FIN DEL BLOQUE DE FORMULARIO DE PUBLICIDAD
-
-
-    }
-
-
-
-    // Snackbar para mostrar mensajes de éxito o error
-    SnackbarHost(hostState = snackbarHostState)
-}
-// Fin de la función PantallaPublicidad
-
-
-// Función para cargar las publicidades asociadas a un perfil desde Firebase
+// Función para cargar las publicidades asociadas a un perfil
 fun loadPublicidadesForProfile(
-    profile: String,  // Nombre del perfil seleccionado
-    onSuccess: (List<String>) -> Unit,  // Callback de éxito que recibe la lista de publicidades
-    onFailure: (Exception) -> Unit  // Callback en caso de fallo
+    profile: String,
+    onSuccess: (List<String>) -> Unit,
+    onFailure: (Exception) -> Unit
 ) {
-    // Referencia a la ruta de Firebase donde se encuentran las publicidades del perfil seleccionado
-    val publicidadesRef = FirebaseDatabase.getInstance().reference
-        .child("CLAVE_STREAM_FB")
-        .child("PUBLICIDADES")
-        .child(profile)  // Accedemos a la clave del perfil
+    val database = FirebaseDatabase.getInstance()
+    val profileRef = database.reference.child("CLAVE_STREAM_FB").child("PERFILES").child(profile).child("PUBLICIDADES")
 
-    // Escuchar los datos de Firebase (solo una vez, no para actualizaciones en tiempo real)
-    publicidadesRef.addListenerForSingleValueEvent(object : ValueEventListener {
+    profileRef.addListenerForSingleValueEvent(object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
-            if (snapshot.exists()) {
-                val publicidadesList = mutableListOf<String>()  // Lista temporal para almacenar los nombres de las publicidades
-
-                // Recorrer todos los hijos (subclaves) de la referencia de publicidades
-                for (publicidadSnapshot in snapshot.children) {
-                    // Extraer el nombre de la publicidad desde la subclave "nombre"
-                    val nombrePublicidad = publicidadSnapshot.child("nombre").getValue(String::class.java)
-                    if (nombrePublicidad != null) {
-                        publicidadesList.add(nombrePublicidad)  // Agregar el nombre a la lista
-                    }
-                }
-
-                if (publicidadesList.isEmpty()) {
-                    println("No hay publicidades en el perfil seleccionado")
-                }
-
-                // Llamar al callback de éxito con la lista de publicidades
-                onSuccess(publicidadesList)
-            } else {
-                // Si el snapshot no existe, eso significa que la clave no existe o no hay datos
-                println("La clave 'PUBLICIDADES' no existe para este perfil.")
-                onSuccess(emptyList())  // Retornar una lista vacía
-            }
+            val publicidades = snapshot.children.map { it.key ?: "" }.filter { it.isNotEmpty() }
+            onSuccess(publicidades)
         }
 
         override fun onCancelled(error: DatabaseError) {
-            // Llamar al callback de error en caso de fallo
             onFailure(Exception(error.message))
         }
     })
 }
-
-
 
 // Función para cargar los datos de una publicidad específica desde Firebase
 fun loadPublicidadData(
@@ -600,6 +129,50 @@ fun loadPublicidadData(
     })
 }
 
+fun savePublicidad(
+    profile: String,  // Nombre del perfil seleccionado
+    nombre: String,  // Nombre de la publicidad (obligatorio)
+    imageUrl: String?,  // URL de la imagen publicitaria (opcional)
+    fechaInicial: String?,  // Fecha inicial de la publicidad (opcional)
+    fechaFinal: String?,  // Fecha final de la publicidad (opcional)
+    guion: String?,  // Guion o contenido de la publicidad (opcional)
+    onSuccess: () -> Unit,  // Callback en caso de éxito
+    onFailure: (Exception) -> Unit  // Callback en caso de fallo
+) {
+    // Verificar que el campo de nombre no esté vacío
+    if (profile.isBlank() || nombre.isBlank()) {
+        onFailure(Exception("El campo nombre no puede estar vacío"))
+        return
+    }
+
+    // Si la URL de la imagen, fecha inicial, fecha final o guion están vacíos, guardamos un valor por defecto
+    val publicidadData = mapOf(
+        "nombre" to nombre,
+        "ruta" to (imageUrl ?: ""),  // Guardar una cadena vacía si no se selecciona una imagen
+        "fechaInicial" to (fechaInicial ?: ""),  // Guardar una cadena vacía si no se selecciona una fecha inicial
+        "fechaFinal" to (fechaFinal ?: ""),  // Guardar una cadena vacía si no se selecciona una fecha final
+        "guion" to (guion ?: "")  // Guardar una cadena vacía si no se selecciona un guion
+    )
+
+    // Referencia a la ruta de Firebase donde se guardará la publicidad
+    val database = FirebaseDatabase.getInstance()
+    val publicidadRef = database.reference
+        .child("CLAVE_STREAM_FB")
+        .child("PUBLICIDADES")
+        .child(profile)
+        .child(nombre)  // Usamos el nombre de la publicidad como clave
+
+    // Guardar los datos en Firebase
+    publicidadRef.setValue(publicidadData).addOnCompleteListener { task ->
+        if (task.isSuccessful) {
+            // Si la operación fue exitosa, llamar al callback de éxito
+            onSuccess()
+        } else {
+            // Si ocurrió un error, llamar al callback de fallo con la excepción
+            task.exception?.let { onFailure(it) }
+        }
+    }
+}
 
 fun deletePublicidad(
     profile: String,  // Nombre del perfil seleccionado
@@ -641,154 +214,769 @@ fun deletePublicidad(
     })
 }
 
-
-// Función para subir una imagen a Firebase Storage
+// Función existente para subir imagen (mantener la que ya tienes)
 fun uploadImageToFirebase(
-    imageUri: Uri,  // URI de la imagen seleccionada del dispositivo
-    onSuccess: (String) -> Unit,  // Callback en caso de éxito, recibe la URL de la imagen
-    onFailure: (Exception) -> Unit  // Callback en caso de fallo
+    imageUri: Uri,
+    onSuccess: (String) -> Unit,
+    onFailure: (Exception) -> Unit
 ) {
-    // Obtener la referencia de Firebase Storage
     val storageRef = FirebaseStorage.getInstance().reference
-
-    // Crear una ruta única para la imagen en Firebase Storage (por ejemplo, usando un UUID)
     val imageRef = storageRef.child("GRAFICOS/publicidades/${UUID.randomUUID()}.jpg")
 
-    // Subir el archivo a Firebase Storage
     imageRef.putFile(imageUri)
         .addOnSuccessListener {
-            // Si la subida es exitosa, obtener la URL de descarga
             imageRef.downloadUrl.addOnSuccessListener { uri ->
-                // Llamar al callback de éxito con la URL de la imagen
                 onSuccess(uri.toString())
             }
         }
         .addOnFailureListener { exception ->
-            // Si ocurrió un error, llamar al callback de fallo con la excepción
             onFailure(exception)
         }
 }
 
+// ================================
+// COMPONENTE PRINCIPAL
+// ================================
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SeleccionarImagen() {
-    // Estado para guardar la URI de la imagen seleccionada
+fun PantallaPublicidad(
+    firebaseRepository: FirebaseRepository
+) {
+    // Variables de estado existentes
+    var selectedProfile by remember { mutableStateOf("") }
+    var perfilesList by remember { mutableStateOf(listOf<String>()) }
+    var publicidadesList by remember { mutableStateOf(listOf<String>()) }
+    var selectedPublicidad by remember { mutableStateOf("") }
+    var nombrePublicidad by remember { mutableStateOf("") }
+    var imageUrl by remember { mutableStateOf("") }
+    var fechaInicial by remember { mutableStateOf("") }
+    var fechaFinal by remember { mutableStateOf("") }
+    var guionPublicidad by remember { mutableStateOf("") }
+    var isEditing by remember { mutableStateOf(false) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
 
-    // Configurar el lanzador para abrir el selector de archivos
+    // Nuevas variables para la galería de storage
+    var showImageSelector by remember { mutableStateOf(false) }
+    var isUploading by remember { mutableStateOf(false) }
+    var uploadProgress by remember { mutableStateOf(0) }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // Launcher para seleccionar imagen del dispositivo
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        imageUri = uri  // Guardar la URI de la imagen seleccionada
+        uri?.let {
+            imageUri = it
+            isUploading = true
+            uploadProgress = 0
+
+            // Usar la función existente uploadImageToFirebase
+            uploadImageToFirebase(
+                imageUri = it,
+                onSuccess = { downloadUrl ->
+                    imageUrl = downloadUrl
+                    isUploading = false
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("Imagen subida exitosamente")
+                    }
+                },
+                onFailure = { exception ->
+                    isUploading = false
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("Error subiendo imagen: ${exception.message}")
+                    }
+                }
+            )
+        }
     }
 
-    // Botón para seleccionar la imagen
-    Button(onClick = {
-        launcher.launch("image/*")  // Abrir el selector de imágenes
-    }) {
-        Text("Seleccionar imagen")
+    // Función para mostrar el selector de imágenes de storage
+    fun mostrarSelectorStorage() {
+        showImageSelector = true
     }
 
-    // Si una imagen ha sido seleccionada, mostrar su URI
-    imageUri?.let {
-        Text("Imagen seleccionada: $it")
-
-        // Aquí llamas a la función uploadImageToFirebase para subir la imagen a Firebase Storage
-        uploadImageToFirebase(
-            imageUri = it,  // Pasar la URI de la imagen seleccionada
-            onSuccess = { url ->
-                println("Imagen subida exitosamente: $url")
+    // Cargar perfiles al iniciar
+    LaunchedEffect(Unit) {
+        firebaseRepository.loadProfiles(
+            onSuccess = { profiles ->
+                perfilesList = profiles
             },
             onFailure = { exception ->
-                println("Error al subir la imagen: ${exception.message}")
+                println("Error cargando perfiles: ${exception.message}")
+            }
+        )
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        "📺 Gestión de Publicidades",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Card de selección de perfil
+            ProfileSelectionCard(
+                selectedProfile = selectedProfile,
+                perfilesList = perfilesList,
+                onProfileSelected = { profile ->
+                    selectedProfile = profile
+                    loadPublicidadesForProfile(
+                        profile = profile,
+                        onSuccess = { publicidades ->
+                            publicidadesList = publicidades
+                        },
+                        onFailure = { exception ->
+                            println("Error cargando publicidades: ${exception.message}")
+                        }
+                    )
+                }
+            )
+
+            // Card de lista de publicidades (solo si hay perfil seleccionado)
+            if (selectedProfile.isNotEmpty()) {
+                PublicidadesListCard(
+                    publicidadesList = publicidadesList,
+                    selectedPublicidad = selectedPublicidad,
+                    onPublicidadSelected = { publicidad ->
+                        selectedPublicidad = publicidad
+                        // Cargar datos de la publicidad seleccionada usando función existente
+                        loadPublicidadData(
+                            profile = selectedProfile,
+                            publicidad = publicidad,
+                            onSuccess = { data ->
+                                nombrePublicidad = data["nombre"] as? String ?: ""
+                                imageUrl = data["ruta"] as? String ?: ""
+                                fechaInicial = data["fechaInicial"] as? String ?: ""
+                                fechaFinal = data["fechaFinal"] as? String ?: ""
+                                guionPublicidad = data["guion"] as? String ?: ""
+                                isEditing = true
+                            },
+                            onFailure = { exception ->
+                                println("Error cargando datos de la publicidad: ${exception.message}")
+                            }
+                        )
+                    },
+                    onEditClick = { isEditing = true },
+                    onDeleteClick = { publicidad ->
+                        // Usar función existente de eliminar
+                        deletePublicidad(
+                            profile = selectedProfile,
+                            publicidad = publicidad,
+                            onSuccess = {
+                                publicidadesList = publicidadesList.filter { it != publicidad }
+                                if (selectedPublicidad == publicidad) {
+                                    selectedPublicidad = ""
+                                    isEditing = false
+                                }
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("Publicidad eliminada")
+                                }
+                            },
+                            onFailure = { exception ->
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("Error eliminando: ${exception.message}")
+                                }
+                            }
+                        )
+                    }
+                )
+
+                // Botón para crear nueva publicidad
+                OutlinedButton(
+                    onClick = {
+                        nombrePublicidad = ""
+                        imageUrl = ""
+                        fechaInicial = ""
+                        fechaFinal = ""
+                        guionPublicidad = ""
+                        isEditing = true
+                        selectedPublicidad = ""
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Nueva publicidad")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Crear nueva publicidad")
+                }
+            }
+
+            // Formulario de edición/creación
+            if (isEditing) {
+                PublicidadFormCard(
+                    nombrePublicidad = nombrePublicidad,
+                    imageUrl = imageUrl,
+                    fechaInicial = fechaInicial,
+                    fechaFinal = fechaFinal,
+                    guionPublicidad = guionPublicidad,
+                    isUploading = isUploading,
+                    uploadProgress = uploadProgress,
+                    onNombreChange = { nombrePublicidad = it },
+                    onFechaInicialChange = { fechaInicial = it },
+                    onFechaFinalChange = { fechaFinal = it },
+                    onGuionChange = { guionPublicidad = it },
+                    onSelectFromDevice = { launcher.launch("image/*") },
+                    onSelectFromStorage = { mostrarSelectorStorage() },
+                    onClearImage = { imageUrl = "" },
+                    onSave = {
+                        if (nombrePublicidad.isNotBlank()) {
+                            // Usar función existente para guardar
+                            savePublicidad(
+                                profile = selectedProfile,
+                                nombre = nombrePublicidad,
+                                imageUrl = imageUrl.takeIf { it.isNotEmpty() },
+                                fechaInicial = fechaInicial.takeIf { it.isNotEmpty() },
+                                fechaFinal = fechaFinal.takeIf { it.isNotEmpty() },
+                                guion = guionPublicidad.takeIf { it.isNotEmpty() },
+                                onSuccess = {
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar("Publicidad guardada exitosamente")
+                                    }
+                                    isEditing = false
+                                    selectedPublicidad = ""
+                                    // Recargar lista
+                                    loadPublicidadesForProfile(
+                                        profile = selectedProfile,
+                                        onSuccess = { publicidades ->
+                                            publicidadesList = publicidades
+                                        },
+                                        onFailure = { exception ->
+                                            println("Error recargando publicidades: ${exception.message}")
+                                        }
+                                    )
+                                },
+                                onFailure = { exception ->
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar("Error guardando: ${exception.message}")
+                                    }
+                                }
+                            )
+                        }
+                    },
+                    onCancel = {
+                        isEditing = false
+                        selectedPublicidad = ""
+                        nombrePublicidad = ""
+                        imageUrl = ""
+                        fechaInicial = ""
+                        fechaFinal = ""
+                        guionPublicidad = ""
+                    }
+                )
+            }
+        }
+    }
+
+    // Diálogo selector de imágenes de storage usando componente existente
+    if (showImageSelector) {
+        AdvancedImageSelector(
+            title = "Galería de Publicidades",
+            folderPath = "publicidades",
+            currentImageUrl = imageUrl,
+            onImageSelected = { downloadUrl ->
+                imageUrl = downloadUrl
+                showImageSelector = false
+            },
+            onDismiss = { showImageSelector = false },
+            onUploadNew = {
+                showImageSelector = false
+                launcher.launch("image/*")
             }
         )
     }
 }
 
-fun savePublicidad(
-    profile: String,  // Nombre del perfil seleccionado
-    nombre: String,  // Nombre de la publicidad (obligatorio)
-    imageUrl: String?,  // URL de la imagen publicitaria (opcional)
-    fechaInicial: String?,  // Fecha inicial de la publicidad (opcional)
-    fechaFinal: String?,  // Fecha final de la publicidad (opcional)
-    guion: String?,  // Guion o contenido de la publicidad (opcional)
-    onSuccess: () -> Unit,  // Callback en caso de éxito
-    onFailure: (Exception) -> Unit  // Callback en caso de fallo
+// ================================
+// COMPONENTES UI (PRIVADOS)
+// ================================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProfileSelectionCard(
+    selectedProfile: String,
+    perfilesList: List<String>,
+    onProfileSelected: (String) -> Unit
 ) {
-    // Verificar que el campo de nombre no esté vacío
-    if (profile.isBlank() || nombre.isBlank()) {
-        onFailure(Exception("El campo nombre no puede estar vacío"))
-        return
+    var expanded by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Seleccionar Perfil",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded }
+            ) {
+                OutlinedTextField(
+                    value = selectedProfile,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Perfil") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    )
+                )
+
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    perfilesList.forEach { perfil ->
+                        DropdownMenuItem(
+                            text = { Text(perfil) },
+                            onClick = {
+                                onProfileSelected(perfil)
+                                expanded = false
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.AccountCircle, contentDescription = null)
+                            }
+                        )
+                    }
+                }
+            }
+        }
     }
-
-    // Si la URL de la imagen, fecha inicial, fecha final o guion están vacíos, guardamos un valor por defecto
-    val publicidadData = mapOf(
-        "nombre" to nombre,
-        "ruta" to (imageUrl ?: ""),  // Guardar una cadena vacía si no se selecciona una imagen
-        "fechaInicial" to (fechaInicial ?: ""),  // Guardar una cadena vacía si no se selecciona una fecha inicial
-        "fechaFinal" to (fechaFinal ?: ""),  // Guardar una cadena vacía si no se selecciona una fecha final
-        "guion" to (guion ?: "")  // Guardar una cadena vacía si no se proporciona un guion
-    )
-
-    // Guardar los datos en Firebase
-    val publicidadRef = FirebaseDatabase.getInstance().reference
-        .child("CLAVE_STREAM_FB")
-        .child("PUBLICIDADES")
-        .child(profile)
-        .child(nombre)
-
-    publicidadRef.setValue(publicidadData)
-        .addOnSuccessListener {
-            onSuccess()
-        }
-        .addOnFailureListener { exception ->
-            onFailure(exception)
-        }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SeleccionPerfil(
-    perfilesList: List<String>,
-    onProfileSelected: (String) -> Unit
+private fun PublicidadesListCard(
+    publicidadesList: List<String>,
+    selectedPublicidad: String,
+    onPublicidadSelected: (String) -> Unit,
+    onEditClick: () -> Unit,
+    onDeleteClick: (String) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }  // Controla si el menú está expandido
-    var selectedProfile by remember { mutableStateOf("") }  // Almacena el perfil seleccionado
+    var expandedPublicidades by remember { mutableStateOf(false) }
 
-    // Caja de menú desplegable expuesta
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = {
-            expanded = !expanded  // Alternar el estado de expansión
-        }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        // TextField para mostrar el perfil seleccionado
-        TextField(
-            value = selectedProfile,  // Muestra el perfil seleccionado
-            onValueChange = {},
-            readOnly = true,  // Solo lectura
-            label = { Text("Seleccionar perfil") },
-            trailingIcon = {
-                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor()  // Ancla para el menú
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Campaign,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Publicidades Disponibles",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            if (publicidadesList.isNotEmpty()) {
+                ExposedDropdownMenuBox(
+                    expanded = expandedPublicidades,
+                    onExpandedChange = { expandedPublicidades = !expandedPublicidades }
+                ) {
+                    OutlinedTextField(
+                        value = selectedPublicidad,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Seleccionar publicidad") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedPublicidades) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+
+                    ExposedDropdownMenu(
+                        expanded = expandedPublicidades,
+                        onDismissRequest = { expandedPublicidades = false }
+                    ) {
+                        publicidadesList.forEach { publicidad ->
+                            DropdownMenuItem(
+                                text = { Text(publicidad) },
+                                onClick = {
+                                    onPublicidadSelected(publicidad)
+                                    expandedPublicidades = false
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Image, contentDescription = null)
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Botones de acción si hay publicidad seleccionada
+                if (selectedPublicidad.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilledTonalButton(
+                            onClick = onEditClick,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = "Editar")
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Editar")
+                        }
+
+                        OutlinedButton(
+                            onClick = { onDeleteClick(selectedPublicidad) },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Eliminar")
+                        }
+                    }
+                }
+            } else {
+                Text(
+                    text = "No hay publicidades para este perfil",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PublicidadFormCard(
+    nombrePublicidad: String,
+    imageUrl: String,
+    fechaInicial: String,
+    fechaFinal: String,
+    guionPublicidad: String,
+    isUploading: Boolean,
+    uploadProgress: Int,
+    onNombreChange: (String) -> Unit,
+    onFechaInicialChange: (String) -> Unit,
+    onFechaFinalChange: (String) -> Unit,
+    onGuionChange: (String) -> Unit,
+    onSelectFromDevice: () -> Unit,
+    onSelectFromStorage: () -> Unit,
+    onClearImage: () -> Unit,
+    onSave: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Título
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = if (nombrePublicidad.isEmpty()) "Nueva Publicidad" else "Editar Publicidad",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            // Campo nombre
+            OutlinedTextField(
+                value = nombrePublicidad,
+                onValueChange = onNombreChange,
+                label = { Text("Nombre de la publicidad") },
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = {
+                    Icon(Icons.Default.Title, contentDescription = null)
+                }
+            )
+
+            // Sección de imagen
+            ImageSection(
+                imageUrl = imageUrl,
+                isUploading = isUploading,
+                uploadProgress = uploadProgress,
+                onSelectFromDevice = onSelectFromDevice,
+                onSelectFromStorage = onSelectFromStorage,
+                onClearImage = onClearImage
+            )
+
+            // Fechas
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = fechaInicial,
+                    onValueChange = onFechaInicialChange,
+                    label = { Text("Fecha inicial") },
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = {
+                        Icon(Icons.Default.DateRange, contentDescription = null)
+                    }
+                )
+
+                OutlinedTextField(
+                    value = fechaFinal,
+                    onValueChange = onFechaFinalChange,
+                    label = { Text("Fecha final") },
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = {
+                        Icon(Icons.Default.Event, contentDescription = null)
+                    }
+                )
+            }
+
+            // Guión
+            OutlinedTextField(
+                value = guionPublicidad,
+                onValueChange = onGuionChange,
+                label = { Text("Guión publicitario") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3,
+                maxLines = 6,
+                leadingIcon = {
+                    Icon(Icons.Default.Description, contentDescription = null)
+                }
+            )
+
+            // Botones de acción
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onCancel,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Cancel, contentDescription = "Cancelar")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cancelar")
+                }
+
+                Button(
+                    onClick = onSave,
+                    modifier = Modifier.weight(1f),
+                    enabled = nombrePublicidad.isNotBlank()
+                ) {
+                    Icon(Icons.Default.Save, contentDescription = "Guardar")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Guardar")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImageSection(
+    imageUrl: String,
+    isUploading: Boolean,
+    uploadProgress: Int,
+    onSelectFromDevice: () -> Unit,
+    onSelectFromStorage: () -> Unit,
+    onClearImage: () -> Unit
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "Imagen Publicitaria",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Medium
         )
 
-        // Menú desplegable con la lista de perfiles
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            perfilesList.forEach { perfil ->
-                DropdownMenuItem(
-                    text = { Text(perfil) },
-                    onClick = {
-                        selectedProfile = perfil  // Actualizar el perfil seleccionado
-                        expanded = false  // Cerrar el menú
-                        onProfileSelected(perfil)  // Llamar la función cuando un perfil es seleccionado
+        // Vista previa de la imagen
+        if (imageUrl.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = "Vista previa de publicidad",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Text(
+                text = "✅ Imagen cargada correctamente",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        } else {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.Image,
+                            contentDescription = "Sin imagen",
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Sin imagen seleccionada",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
+                }
+            }
+        }
+
+        // Progreso de subida
+        if (isUploading) {
+            LinearProgressIndicator(
+                progress = uploadProgress / 100f,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                text = "Subiendo... $uploadProgress%",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        // Botones de selección
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = onSelectFromDevice,
+                modifier = Modifier.weight(1f),
+                enabled = !isUploading
+            ) {
+                Icon(Icons.Default.Upload, contentDescription = null)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Subir")
+            }
+
+            OutlinedButton(
+                onClick = onSelectFromStorage,
+                modifier = Modifier.weight(1f),
+                enabled = !isUploading
+            ) {
+                Icon(Icons.Default.CloudDownload, contentDescription = null)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Galería")
+            }
+
+            if (imageUrl.isNotEmpty()) {
+                OutlinedButton(
+                    onClick = onClearImage,
+                    enabled = !isUploading,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(Icons.Default.Clear, contentDescription = "Limpiar")
+                }
+            }
+        }
+
+        // Información de ayuda
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp)
+            ) {
+                Text(
+                    text = "💡 Recomendaciones",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    text = "• Formato: PNG/JPG (recomendado 400x100px)\n• 'Subir' sube desde tu dispositivo\n• 'Galería' muestra imágenes guardadas en Firebase",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                 )
             }
         }
