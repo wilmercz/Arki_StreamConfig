@@ -28,6 +28,7 @@ data class PerfilStreamConfig(
 
     // CONFIGURACIÓN DE CONTENIDO DINÁMICO
     val contenidoDinamico: ContenidoDinamicoConfig = ContenidoDinamicoConfig(),
+    val automatizacion: AutomatizacionConfig = AutomatizacionConfig(),
 
     // CONFIGURACIÓN PARA LA WEB (CameraFi App)
     val webRenderConfig: WebRenderConfig = WebRenderConfig(),
@@ -105,6 +106,28 @@ data class SistemaColoresAvanzado(
     }
 }
 
+data class AutomatizacionConfig(
+    // ⏱️ DURACIONES DE LOWERTHIRDS EN SEGUNDOS (para la web)
+    val duracionNombreRol: Int = 45, // Tiempo que permanece visible nombre + rol
+    val duracionTema: Int = 45, // Tiempo que permanece visible el tema
+    val duracionPublicidad: Int = 30, // Tiempo que permanece visible la publicidad
+
+    // 🖼️ DURACIONES DE LOGOS EN SEGUNDOS (NUEVO - necesario para las pantallas)
+    val duracionLogoPrincipal: Int = 60, // Logo principal visible por más tiempo
+    val duracionLogosAliados: Int = 45, // Cada logo aliado visible por menos tiempo
+    val habilitarRotacionLogos: Boolean = false, // Activar/desactivar rotación automática
+
+    // 🎛️ MODO DE OPERACIÓN
+    val modoAutomatico: Boolean = true, // true=Automático, false=Manual
+
+    // ⚙️ CONFIGURACIÓN ADICIONAL
+    val habilitarOcultamientoAutomatico: Boolean = true, // Activar/desactivar función automática
+    val delayEntreElementos: Int = 500, // Milisegundos entre animaciones de elementos
+
+    // 🔄 CONFIGURACIÓN DE ROTACIÓN DE LOGOS (NUEVO - necesario para las pantallas)
+    val cicloContinuoLogos: Boolean = true, // Volver a empezar desde el logo principal
+    val pausarRotacionEnManual: Boolean = true // Pausar rotación cuando esté en modo manual
+)
 
 data class ConfigAnimaciones(
     val entradaLogo: AnimationType = AnimationType.SLIDE_IN_LEFT,
@@ -402,6 +425,27 @@ object PerfilStreamConfigUtils {
                     "habilitado" to config.webRenderConfig.habilitado,
                     "actualizacionTiempoReal" to config.webRenderConfig.actualizacionTiempoReal,
                     "compressionLevel" to config.webRenderConfig.compressionLevel.name
+                ),
+                // ✅ NUEVA CONFIGURACIÓN DE AUTOMATIZACIÓN
+                "automatizacion" to mapOf(
+                    // Duraciones de LowerThirds
+                    "duracionNombreRol" to config.automatizacion.duracionNombreRol,
+                    "duracionTema" to config.automatizacion.duracionTema,
+                    "duracionPublicidad" to config.automatizacion.duracionPublicidad,
+
+                    // ✅ NUEVO: Duraciones de Logos
+                    "duracionLogoPrincipal" to config.automatizacion.duracionLogoPrincipal,
+                    "duracionLogosAliados" to config.automatizacion.duracionLogosAliados,
+                    "habilitarRotacionLogos" to config.automatizacion.habilitarRotacionLogos,
+
+                    // Modo de operación
+                    "modoAutomatico" to config.automatizacion.modoAutomatico,
+                    "habilitarOcultamientoAutomatico" to config.automatizacion.habilitarOcultamientoAutomatico,
+                    "delayEntreElementos" to config.automatizacion.delayEntreElementos,
+
+                    // ✅ NUEVO: Configuración de rotación
+                    "cicloContinuoLogos" to config.automatizacion.cicloContinuoLogos,
+                    "pausarRotacionEnManual" to config.automatizacion.pausarRotacionEnManual
                 )
             )
         )

@@ -72,6 +72,15 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 
+import androidx.compose.foundation.text.KeyboardOptions
+
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material3.Divider
+import androidx.compose.material3.Slider
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.material.icons.filled.Info
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -229,7 +238,7 @@ fun PantallaEditarPerfil(
         TabInfo("Logos", Icons.Default.Image, "Elementos de Recursos"),
         TabInfo("Posición", Icons.Default.CropFree, "Ubicación de elementos"),
         TabInfo("Animaciones", Icons.Default.Animation, "Efectos y transiciones"),
-        TabInfo("Contenido", Icons.Default.TextFields, "Texto dinámico"),
+        TabInfo("Automatización", Icons.Default.Timer, "Control automático"),
         TabInfo("Streaming", Icons.Default.Videocam, "Configuración técnica"),
         TabInfo("Web", Icons.Default.Web, "Configuración para CameraFi")
     )
@@ -2215,6 +2224,9 @@ fun TabAnimaciones(
     }
 }
 
+// REEMPLAZAR COMPLETAMENTE la función TabContenidoDinamico existente
+// Ubicación: PantallaEditarPerfil.kt, línea aproximada 800-900
+
 @Composable
 fun TabContenidoDinamico(
     perfil: PerfilStreamConfig,
@@ -2225,81 +2237,379 @@ fun TabContenidoDinamico(
         contentPadding = PaddingValues(bottom = 16.dp)
     ) {
         item {
-            SectionCard("Información del Invitado") {
+            SectionCard("⚙️ Automatización de LowerThirds") {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = perfil.invitadoConfig.nombreCompleto,
-                        onValueChange = {
-                            val newInvitado = perfil.invitadoConfig.copy(nombreCompleto = it)
-                            onPerfilChange(perfil.copy(invitadoConfig = newInvitado))
-                        },
-                        label = { Text("Nombre Completo") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
 
-                    OutlinedTextField(
-                        value = perfil.invitadoConfig.titulo,
-                        onValueChange = {
-                            val newInvitado = perfil.invitadoConfig.copy(titulo = it)
-                            onPerfilChange(perfil.copy(invitadoConfig = newInvitado))
-                        },
-                        label = { Text("Título/Cargo") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    // MODO DE OPERACIÓN
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text = "Modo de Operación",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (perfil.automatizacion.modoAutomatico) "Los elementos se ocultan automáticamente" else "Control manual desde la app",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
 
-                    OutlinedTextField(
-                        value = perfil.invitadoConfig.organizacion,
-                        onValueChange = {
-                            val newInvitado = perfil.invitadoConfig.copy(organizacion = it)
-                            onPerfilChange(perfil.copy(invitadoConfig = newInvitado))
-                        },
-                        label = { Text("Organización") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                        Switch(
+                            checked = perfil.automatizacion.modoAutomatico,
+                            onCheckedChange = { isChecked ->
+                                val newAutomatizacion = perfil.automatizacion.copy(modoAutomatico = isChecked)
+                                onPerfilChange(perfil.copy(automatizacion = newAutomatizacion))
+                            }
+                        )
+                    }
+
+                    // INDICADOR VISUAL DEL MODO
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (perfil.automatizacion.modoAutomatico)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (perfil.automatizacion.modoAutomatico)
+                                    Icons.Default.Timer else Icons.Default.TouchApp,
+                                contentDescription = null,
+                                tint = if (perfil.automatizacion.modoAutomatico)
+                                    MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = if (perfil.automatizacion.modoAutomatico)
+                                    "🤖 MODO AUTOMÁTICO ACTIVO"
+                                else "👤 MODO MANUAL ACTIVO",
+                                fontWeight = FontWeight.Bold,
+                                color = if (perfil.automatizacion.modoAutomatico)
+                                    MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        item {
-            SectionCard("Fecha y Ubicación") {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Switch(
-                            checked = perfil.contenidoDinamico.mostrarFechaHora,
-                            onCheckedChange = {
-                                val newContenido = perfil.contenidoDinamico.copy(mostrarFechaHora = it)
-                                onPerfilChange(perfil.copy(contenidoDinamico = newContenido))
+        // CONFIGURACIÓN DE DURACIONES (solo visible en modo automático)
+        if (perfil.automatizacion.modoAutomatico) {
+            item {
+                SectionCard("⏱️ Duración de Elementos") {
+                    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+
+                        // NOMBRE + ROL
+                        ConfiguracionDuracion(
+                            titulo = "👤 Nombre + Rol",
+                            descripcion = "Tiempo visible del nombre y rol del invitado",
+                            valorActual = perfil.automatizacion.duracionNombreRol,
+                            valorMinimo = 5,
+                            valorMaximo = 120,
+                            unidad = "segundos",
+                            onCambio = { nuevoValor ->
+                                val newAutomatizacion = perfil.automatizacion.copy(duracionNombreRol = nuevoValor)
+                                onPerfilChange(perfil.copy(automatizacion = newAutomatizacion))
                             }
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Mostrar fecha y hora automática")
-                    }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = perfil.contenidoDinamico.ciudadActual,
-                            onValueChange = {
-                                val newContenido = perfil.contenidoDinamico.copy(ciudadActual = it)
-                                onPerfilChange(perfil.copy(contenidoDinamico = newContenido))
-                            },
-                            label = { Text("Ciudad") },
-                            modifier = Modifier.weight(1f)
+                        Divider()
+
+                        // TEMA
+                        ConfiguracionDuracion(
+                            titulo = "💭 Tema",
+                            descripcion = "Tiempo visible del tema de conversación",
+                            valorActual = perfil.automatizacion.duracionTema,
+                            valorMinimo = 5,
+                            valorMaximo = 120,
+                            unidad = "segundos",
+                            onCambio = { nuevoValor ->
+                                val newAutomatizacion = perfil.automatizacion.copy(duracionTema = nuevoValor)
+                                onPerfilChange(perfil.copy(automatizacion = newAutomatizacion))
+                            }
                         )
 
-                        OutlinedTextField(
-                            value = perfil.contenidoDinamico.provinciaActual,
-                            onValueChange = {
-                                val newContenido = perfil.contenidoDinamico.copy(provinciaActual = it)
-                                onPerfilChange(perfil.copy(contenidoDinamico = newContenido))
-                            },
-                            label = { Text("Provincia") },
-                            modifier = Modifier.weight(1f)
+                        Divider()
+
+                        // PUBLICIDAD
+                        ConfiguracionDuracion(
+                            titulo = "📺 Publicidad",
+                            descripcion = "Tiempo visible de elementos publicitarios",
+                            valorActual = perfil.automatizacion.duracionPublicidad,
+                            valorMinimo = 5,
+                            valorMaximo = 180,
+                            unidad = "segundos",
+                            onCambio = { nuevoValor ->
+                                val newAutomatizacion = perfil.automatizacion.copy(duracionPublicidad = nuevoValor)
+                                onPerfilChange(perfil.copy(automatizacion = newAutomatizacion))
+                            }
+                        )
+                    }
+                }
+            }
+
+            item {
+                SectionCard("🔧 Configuración Avanzada") {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+
+                        // ACTIVAR/DESACTIVAR OCULTAMIENTO AUTOMÁTICO
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Ocultamiento Automático",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "Aplicar los tiempos configurados automáticamente",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Switch(
+                                checked = perfil.automatizacion.habilitarOcultamientoAutomatico,
+                                onCheckedChange = { isChecked ->
+                                    val newAutomatizacion = perfil.automatizacion.copy(habilitarOcultamientoAutomatico = isChecked)
+                                    onPerfilChange(perfil.copy(automatizacion = newAutomatizacion))
+                                }
+                            )
+                        }
+
+                        // DELAY ENTRE ELEMENTOS
+                        if (perfil.automatizacion.habilitarOcultamientoAutomatico) {
+                            ConfiguracionDuracion(
+                                titulo = "⏳ Delay entre Elementos",
+                                descripcion = "Tiempo de espera entre animaciones",
+                                valorActual = perfil.automatizacion.delayEntreElementos,
+                                valorMinimo = 100,
+                                valorMaximo = 2000,
+                                unidad = "milisegundos",
+                                paso = 100,
+                                onCambio = { nuevoValor ->
+                                    val newAutomatizacion = perfil.automatizacion.copy(delayEntreElementos = nuevoValor)
+                                    onPerfilChange(perfil.copy(automatizacion = newAutomatizacion))
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ROTACIÓN DE LOGOS (solo visible si hay logos aliados configurados)
+        if (perfil.automatizacion.modoAutomatico && perfil.lowerThirdConfig.logo.logosAliados.habilitado && perfil.lowerThirdConfig.logo.logosAliados.logos.isNotEmpty()) {
+            item {
+                SectionCard("🖼️ Rotación de Logos") {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+
+                        // ACTIVAR/DESACTIVAR ROTACIÓN
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Rotación Automática de Logos",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Alternar entre logo principal y logos aliados automáticamente",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Switch(
+                                checked = perfil.automatizacion.habilitarRotacionLogos,
+                                onCheckedChange = { isChecked ->
+                                    val newAutomatizacion = perfil.automatizacion.copy(habilitarRotacionLogos = isChecked)
+                                    onPerfilChange(perfil.copy(automatizacion = newAutomatizacion))
+                                }
+                            )
+                        }
+
+                        // CONFIGURACIÓN DE DURACIONES (solo si rotación está activa)
+                        if (perfil.automatizacion.habilitarRotacionLogos) {
+                            Divider()
+
+                            // DURACIÓN LOGO PRINCIPAL
+                            ConfiguracionDuracion(
+                                titulo = "🏛️ Logo Principal",
+                                descripcion = "Tiempo visible del logo principal del canal",
+                                valorActual = perfil.automatizacion.duracionLogoPrincipal,
+                                valorMinimo = 30,
+                                valorMaximo = 180,
+                                unidad = "segundos",
+                                onCambio = { nuevoValor ->
+                                    val newAutomatizacion = perfil.automatizacion.copy(duracionLogoPrincipal = nuevoValor)
+                                    onPerfilChange(perfil.copy(automatizacion = newAutomatizacion))
+                                }
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // DURACIÓN LOGOS ALIADOS
+                            ConfiguracionDuracion(
+                                titulo = "🤝 Logos Aliados",
+                                descripcion = "Tiempo visible de cada logo aliado (${perfil.lowerThirdConfig.logo.logosAliados.logos.size} configurados)",
+                                valorActual = perfil.automatizacion.duracionLogosAliados,
+                                valorMinimo = 15,
+                                valorMaximo = 120,
+                                unidad = "segundos",
+                                onCambio = { nuevoValor ->
+                                    val newAutomatizacion = perfil.automatizacion.copy(duracionLogosAliados = nuevoValor)
+                                    onPerfilChange(perfil.copy(automatizacion = newAutomatizacion))
+                                }
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // CONFIGURACIÓN DE CICLO
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Ciclo Continuo",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = "Repetir la rotación indefinidamente",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                Switch(
+                                    checked = perfil.automatizacion.cicloContinuoLogos,
+                                    onCheckedChange = { isChecked ->
+                                        val newAutomatizacion = perfil.automatizacion.copy(cicloContinuoLogos = isChecked)
+                                        onPerfilChange(perfil.copy(automatizacion = newAutomatizacion))
+                                    }
+                                )
+                            }
+
+                            // PREVIEW DEL CICLO
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "📋 Secuencia de Rotación:",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    val totalLogos = perfil.lowerThirdConfig.logo.logosAliados.logos.size
+                                    val tiempoTotal = perfil.automatizacion.duracionLogoPrincipal +
+                                            (perfil.automatizacion.duracionLogosAliados * totalLogos)
+
+                                    Text(
+                                        text = "• Logo Principal: ${perfil.automatizacion.duracionLogoPrincipal}s\n" +
+                                                "• ${totalLogos} Logos Aliados: ${perfil.automatizacion.duracionLogosAliados}s cada uno\n" +
+                                                "• Tiempo total por ciclo: ${tiempoTotal}s (${String.format("%.1f", tiempoTotal/60.0)} min)",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    if (perfil.automatizacion.cicloContinuoLogos) {
+                                        Text(
+                                            text = "🔄 Se repetirá continuamente",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontStyle = FontStyle.Italic
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Mensaje si no hay logos aliados configurados
+        if (perfil.automatizacion.modoAutomatico && (!perfil.lowerThirdConfig.logo.logosAliados.habilitado || perfil.lowerThirdConfig.logo.logosAliados.logos.isEmpty())) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "💡 Configura logos aliados en la pestaña \"Recursos\" para habilitar la rotación automática",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        // INFORMACIÓN ADICIONAL
+        item {
+            SectionCard("ℹ️ Información") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = if (perfil.automatizacion.modoAutomatico) {
+                            "• Los elementos se mostrarán y ocultarán automáticamente según los tiempos configurados\n" +
+                                    "• La web manejará los temporizadores automáticamente\n" +
+                                    "• Los datos se siguen ingresando desde PantallaGeneradorCaracteres"
+                        } else {
+                            "• Los elementos se controlan manualmente desde la app\n" +
+                                    "• Tú decides cuándo mostrar y ocultar cada elemento\n" +
+                                    "• Control total sobre el timing de cada elemento"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (perfil.automatizacion.modoAutomatico) {
+                        Text(
+                            text = "💡 Tip: 45 segundos es el tiempo óptimo para lectura en televisión",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontStyle = FontStyle.Italic
                         )
                     }
                 }
@@ -2307,6 +2617,85 @@ fun TabContenidoDinamico(
         }
     }
 }
+
+// COMPONENTE AUXILIAR - Agregar después de TabContenidoDinamico
+@Composable
+private fun ConfiguracionDuracion(
+    titulo: String,
+    descripcion: String,
+    valorActual: Int,
+    valorMinimo: Int,
+    valorMaximo: Int,
+    unidad: String,
+    paso: Int = 1,
+    onCambio: (Int) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = titulo,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = descripcion,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // CAMPO NUMÉRICO EDITABLE
+            OutlinedTextField(
+                value = valorActual.toString(),
+                onValueChange = { newValue ->
+                    newValue.toIntOrNull()?.let { intValue ->
+                        if (intValue in valorMinimo..valorMaximo) {
+                            onCambio(intValue)
+                        }
+                    }
+                },
+                label = { Text(unidad) },
+                modifier = Modifier.width(120.dp),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+        }
+
+        // SLIDER PARA AJUSTE RÁPIDO
+        Slider(
+            value = valorActual.toFloat(),
+            onValueChange = { newValue ->
+                onCambio(newValue.toInt())
+            },
+            valueRange = valorMinimo.toFloat()..valorMaximo.toFloat(),
+            steps = ((valorMaximo - valorMinimo) / paso) - 1,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // INDICADORES DE RANGO
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "$valorMinimo $unidad",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "$valorMaximo $unidad",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
 
 @Composable
 fun TabStreaming(

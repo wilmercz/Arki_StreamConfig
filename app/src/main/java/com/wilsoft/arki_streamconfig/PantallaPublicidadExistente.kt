@@ -432,7 +432,7 @@ private fun cargarSpotsConImagenes(
                     val estado = auidSnapshot.child("ESTADO").getValue(String::class.java) ?: "0"
                     val inicio = auidSnapshot.child("INICIO").getValue(String::class.java) ?: ""
                     val fin = auidSnapshot.child("FIN").getValue(String::class.java) ?: ""
-                    val urlImagenLowerthirds = auidSnapshot.child("urlImagenLowerthirds").getValue(String::class.java) ?: ""
+                    val urlImagenLowerthirds = auidSnapshot.child("URL_IMAGEN_LOWERTHIRDS").getValue(String::class.java) ?: ""
                     val asesor = auidSnapshot.child("ASESOR").getValue(String::class.java) ?: ""
                     val nombreArchivo = auidSnapshot.child("NOMBRE_ARCHIVO").getValue(String::class.java) ?: ""
 

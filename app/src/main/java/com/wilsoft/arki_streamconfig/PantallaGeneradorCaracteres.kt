@@ -46,6 +46,17 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.ui.graphics.vector.ImageVector
 import kotlinx.coroutines.delay
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+// Para el LocalFocusManager
+import androidx.compose.ui.platform.LocalFocusManager
+// Para el LocalSoftwareKeyboardController (opcional, pero recomendado)
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Info
+import kotlinx.coroutines.delay
+
 
 val MaterialTheme.warningColor: Color
     @Composable
@@ -58,7 +69,7 @@ data class Entrevistado(
     val rol: String = "",
     val tema: String = "",
     val fecha: String = "", // Formato YYYY-MM-DD para facilitar filtros
-    val lugar: String = "Estudio Principal", // Campo nuevo
+    val lugar: String = "Exteriores", // Campo nuevo
     val timestamp: Long = System.currentTimeMillis(),
     val activo: Boolean = true // Para soft delete
 )
@@ -178,6 +189,19 @@ fun PantallaGeneradorCaracteres(
     var airingButtonState by remember { mutableStateOf(AiringButtonState.NORMAL) }
     var countdownTime by remember { mutableStateOf(0) }
     var airingJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    // AGREGAR INMEDIATAMENTE DESPUÉS:
+    var selectedProfile by remember { mutableStateOf("") }
+    var perfilesList by remember { mutableStateOf(listOf<String>()) }
+    var publicidadSeleccionadaData by remember { mutableStateOf<Map<String, Any>?>(null) }
+
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+
+    var isUpdatingPublicidad by remember { mutableStateOf(false) }
+
+    var modoAutomatico by remember { mutableStateOf(true) }
+    var duracionActual by remember { mutableStateOf(45) }
 
     // ================================
     // FUNCIONES DE CONTROL
@@ -624,9 +648,122 @@ fun PantallaGeneradorCaracteres(
         )
     }
 
+    // 3. AGREGAR FUNCIÓN PARA CARGAR PUBLICIDADES (después de las funciones existentes):
+    fun cargarPublicidadesDelPerfil(profile: String) {
+        if (profile.isBlank()) return
+
+        loadPublicidadesForProfile(
+            profile = profile,
+            onSuccess = { publicidades ->
+                publicidadesList = publicidades
+                // Limpiar selección si el perfil cambió
+                selectedPublicidad = ""
+                rutaPublicidad = ""
+                publicidadSeleccionadaData = null
+            },
+            onFailure = { exception ->
+                println("Error cargando publicidades: ${exception.message}")
+                publicidadesList = emptyList()
+            }
+        )
+    }
+
+    // 4. AGREGAR FUNCIÓN PARA CARGAR DATOS DE PUBLICIDAD:
+    fun cargarDatosPublicidad(profile: String, publicidad: String) {
+        if (profile.isBlank() || publicidad.isBlank()) return
+
+        loadPublicidadData(
+            profile = profile,
+            publicidad = publicidad,
+            onSuccess = { data ->
+                publicidadSeleccionadaData = data
+                rutaPublicidad = data["ruta"] as? String ?: ""
+                // Opcional: cargar más datos si los necesitas
+            },
+            onFailure = { exception ->
+                println("Error cargando datos de publicidad: ${exception.message}")
+            }
+        )
+    }
+
+    // NUEVA FUNCIÓN: Actualizar publicidad en Firebase
+    fun actualizarPublicidadEnFirebase() {
+        if (rutaPublicidad.isNotEmpty() && selectedPublicidad.isNotEmpty()) {
+            isUpdatingPublicidad = true
+
+            // Actualizar el campo urlImagenPublicidad en Firebase usando la función existente
+            updateFirebaseField(
+                field = "urlImagenPublicidad",
+                value = rutaPublicidad,
+                firebaseRepository = firebaseRepository
+            )
+
+            // También actualizar información adicional de la publicidad para referencia
+            val additionalUpdates = mapOf(
+                "publicidad_nombre" to selectedPublicidad,
+                "publicidad_perfil" to selectedProfile,
+                "publicidad_fechaActualizacion" to System.currentTimeMillis(),
+                "publicidad_estado" to "actualizada"
+            )
+
+            additionalUpdates.forEach { (field, value) ->
+                updateFirebaseField(field, value, firebaseRepository)
+            }
+
+            // Mostrar confirmación al usuario
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar(
+                    "✅ Publicidad '$selectedPublicidad' actualizada en el sistema en vivo"
+                )
+                delay(1500)
+                isUpdatingPublicidad = false
+            }
+
+            println("🔄 Publicidad actualizada en Firebase:")
+            println("   - urlImagenPublicidad: $rutaPublicidad")
+            println("   - Publicidad: $selectedPublicidad")
+            println("   - Perfil: $selectedProfile")
+            println("   - Timestamp: ${System.currentTimeMillis()}")
+
+        } else {
+            coroutineScope.launch {
+                val mensaje = when {
+                    rutaPublicidad.isEmpty() -> "⚠️ No hay imagen de publicidad cargada"
+                    selectedPublicidad.isEmpty() -> "⚠️ No hay publicidad seleccionada"
+                    else -> "⚠️ No se puede actualizar la publicidad"
+                }
+                snackbarHostState.showSnackbar(mensaje)
+            }
+        }
+    }
+
+
     // ================================
     // CONFIGURACIÓN DE LISTENERS Y CARGA INICIAL (OPTIMIZADA)
     // ================================
+
+    LaunchedEffect(selectedProfile) {
+        if (selectedProfile.isNotEmpty()) {
+            // Cargar configuración de automatización del perfil
+            firebaseRepository.loadStreamData(
+                path = "CLAVE_STREAM_FB/PERFILES_AVANZADOS/$selectedProfile",
+                onSuccess = { perfilData ->
+                    val configAvanzada = perfilData["configuracionAvanzada"] as? Map<String, Any>
+                    val automatizacionData = configAvanzada?.get("automatizacion") as? Map<String, Any>
+
+                    automatizacionData?.let { data ->
+                        modoAutomatico = data["modoAutomatico"] as? Boolean ?: true
+                        duracionActual = data["duracionNombreRol"] as? Int ?: 45
+                    }
+                },
+                onFailure = {
+                    // Usar valores por defecto
+                    modoAutomatico = true
+                    duracionActual = 45
+                }
+            )
+        }
+    }
 
     // Configurar listener para actualizaciones automáticas según filtro
     LaunchedEffect(filtroSeleccionado) {
@@ -635,6 +772,22 @@ fun PantallaGeneradorCaracteres(
 
     // Cargar datos iniciales del perfil
     LaunchedEffect(Unit) {
+        // Cargar perfiles al iniciar
+        firebaseRepository.loadProfiles(
+            onSuccess = { profiles ->
+                perfilesList = profiles
+                // Si hay perfiles, seleccionar el primero por defecto
+                if (profiles.isNotEmpty()) {
+                    selectedProfile = profiles.first()
+                    cargarPublicidadesDelPerfil(profiles.first())
+                }
+            },
+            onFailure = { exception ->
+                println("Error cargando perfiles: ${exception.message}")
+            }
+        )
+
+
         // CARGAR PERFIL (mantener funcionalidad existente)
         firebaseRepository.loadStreamData(
             "CLAVE_STREAM_FB/STREAM_LIVE/GRAFICOS",
@@ -799,10 +952,26 @@ fun PantallaGeneradorCaracteres(
                 title = {
                     Column {
                         Text("Generador de Caracteres")
+
+                        // ✅ ALTERNATIVA 3 - Con icono
                         Text(
-                            text = nombrePerfil,
+                            text = "$nombrePerfil ⚙️ en Gestionar perfil",
                             style = MaterialTheme.typography.bodyMedium,
                             color = colorLetra1
+                        )
+
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            focusManager.clearFocus()
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardHide,
+                            contentDescription = "Ocultar teclado",
+                            tint = colorLetra1
                         )
                     }
                 },
@@ -819,6 +988,61 @@ fun PantallaGeneradorCaracteres(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // ✅ NUEVO: INDICADOR DE MODO AUTOMÁTICO/MANUAL
+            // AGREGAR este bloque antes del TabRow existente
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (modoAutomatico)
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                    else MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (modoAutomatico) Icons.Default.Timer else Icons.Default.TouchApp,
+                            contentDescription = null,
+                            tint = if (modoAutomatico) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = if (modoAutomatico) "🤖 Modo Automático" else "👤 Modo Manual",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = if (modoAutomatico) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (modoAutomatico) {
+                                Text(
+                                    text = "Los elementos se ocultan automáticamente",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    if (modoAutomatico) {
+                        Text(
+                            text = "⏱️ ${duracionActual}s",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
             // ================================
             // BARRA DE TABS CON ICONOS
             // ================================
@@ -981,20 +1205,130 @@ fun PantallaGeneradorCaracteres(
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
+                        // NUEVA SECCIÓN: Selector de Perfil
                         item {
-                            PublicidadCard(
-                                publicidadesList = publicidadesList,
-                                selectedPublicidad = selectedPublicidad,
-                                expandedPublicidades = expandedPublicidades,
-                                rutaPublicidad = rutaPublicidad,
-                                mostrarPublicidad = mostrarPublicidad,
-                                onExpandedChange = { expandedPublicidades = it },
-                                onPublicidadSelect = { publicidad ->
-                                    selectedPublicidad = publicidad
-                                    expandedPublicidades = false
-                                    // Aquí podrías cargar datos de la publicidad si tienes esa función
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Person,
+                                            contentDescription = "Perfil",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Perfil de Publicidades",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    // Dropdown de perfiles
+                                    var expandedProfiles by remember { mutableStateOf(false) }
+
+                                    ExposedDropdownMenuBox(
+                                        expanded = expandedProfiles,
+                                        onExpandedChange = { expandedProfiles = it }
+                                    ) {
+                                        OutlinedTextField(
+                                            value = selectedProfile,
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            label = { Text("Seleccionar perfil") },
+                                            trailingIcon = {
+                                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedProfiles)
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .menuAnchor()
+                                        )
+
+                                        ExposedDropdownMenu(
+                                            expanded = expandedProfiles,
+                                            onDismissRequest = { expandedProfiles = false }
+                                        ) {
+                                            perfilesList.forEach { profile ->
+                                                DropdownMenuItem(
+                                                    text = { Text(profile) },
+                                                    onClick = {
+                                                        selectedProfile = profile
+                                                        expandedProfiles = false
+                                                        cargarPublicidadesDelPerfil(profile)
+                                                    },
+                                                    leadingIcon = {
+                                                        Icon(Icons.Default.Person, contentDescription = null)
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
-                            )
+                            }
+                        }
+
+                        // SECCIÓN MEJORADA: Publicidades (solo si hay perfil seleccionado)
+                        if (selectedProfile.isNotEmpty()) {
+                            item {
+                                PublicidadCardMejorada(
+                                    publicidadesList = publicidadesList,
+                                    selectedPublicidad = selectedPublicidad,
+                                    expandedPublicidades = expandedPublicidades,
+                                    rutaPublicidad = rutaPublicidad,
+                                    mostrarPublicidad = mostrarPublicidad,
+                                    selectedProfile = selectedProfile,
+                                    onExpandedChange = { expandedPublicidades = it },
+                                    onPublicidadSelect = { publicidad ->
+                                        selectedPublicidad = publicidad
+                                        expandedPublicidades = false
+                                        cargarDatosPublicidad(selectedProfile, publicidad)
+                                    },
+                                    onActualizarPublicidadEnFirebase = { actualizarPublicidadEnFirebase() }
+                                )
+                            }
+                        } else {
+                            item {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(24.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Campaign,
+                                            contentDescription = "Sin perfil",
+                                            modifier = Modifier.size(48.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text(
+                                            text = "Selecciona un perfil",
+                                            style = MaterialTheme.typography.titleMedium
+                                        )
+                                        Text(
+                                            text = "Para cargar las publicidades disponibles",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -2279,84 +2613,6 @@ private fun SimplifiedSwitchRowWithValidation(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PublicidadCard(
-    publicidadesList: List<String>,
-    selectedPublicidad: String,
-    expandedPublicidades: Boolean,
-    rutaPublicidad: String,
-    mostrarPublicidad: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    onPublicidadSelect: (String) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "📺 Publicidad",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            // Selector de publicidad
-            ExposedDropdownMenuBox(
-                expanded = expandedPublicidades,
-                onExpandedChange = onExpandedChange
-            ) {
-                OutlinedTextField(
-                    value = selectedPublicidad,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Seleccionar publicidad") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedPublicidades) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor()
-                )
-
-                ExposedDropdownMenu(
-                    expanded = expandedPublicidades,
-                    onDismissRequest = { onExpandedChange(false) }
-                ) {
-                    publicidadesList.forEach { publicidad ->
-                        DropdownMenuItem(
-                            text = { Text(publicidad) },
-                            onClick = { onPublicidadSelect(publicidad) }
-                        )
-                    }
-                }
-            }
-
-            // Preview de la publicidad
-            if (rutaPublicidad.isNotEmpty()) {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.Black
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    val painter = rememberAsyncImagePainter(
-                        model = rutaPublicidad
-                    )
-
-                    Image(
-                        painter = painter,
-                        contentDescription = "Publicidad",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(16 / 4.5f)
-                    )
-                }
-            }
-        }
-    }
-}
 
 // ================================
 // FUNCIONES AUXILIARES OPTIMIZADAS
@@ -2681,6 +2937,192 @@ fun SmartAirButton(
                             fontStyle = FontStyle.Italic
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PublicidadCardMejorada(
+    publicidadesList: List<String>,
+    selectedPublicidad: String,
+    expandedPublicidades: Boolean,
+    rutaPublicidad: String,
+    mostrarPublicidad: Boolean,
+    selectedProfile: String,
+    onExpandedChange: (Boolean) -> Unit,
+    onPublicidadSelect: (String) -> Unit,
+    // NUEVO PARÁMETRO: función para actualizar Firebase
+    onActualizarPublicidadEnFirebase: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Header mejorado
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Campaign,
+                    contentDescription = "Publicidad",
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "📺 Publicidad",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = "(${publicidadesList.size} disponibles)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (publicidadesList.isNotEmpty()) {
+                // Selector de publicidad
+                ExposedDropdownMenuBox(
+                    expanded = expandedPublicidades,
+                    onExpandedChange = onExpandedChange
+                ) {
+                    OutlinedTextField(
+                        value = selectedPublicidad,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Seleccionar publicidad") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedPublicidades)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+
+                    ExposedDropdownMenu(
+                        expanded = expandedPublicidades,
+                        onDismissRequest = { onExpandedChange(false) }
+                    ) {
+                        publicidadesList.forEach { publicidad ->
+                            DropdownMenuItem(
+                                text = { Text(publicidad) },
+                                onClick = { onPublicidadSelect(publicidad) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Image, contentDescription = null)
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Preview de la publicidad (mejorado)
+                if (rutaPublicidad.isNotEmpty()) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color.Black
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        AsyncImage(
+                            model = rutaPublicidad,
+                            contentDescription = "Preview publicidad",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(16 / 4.5f),
+                            contentScale = ContentScale.Crop,
+                            placeholder = painterResource(android.R.drawable.ic_menu_gallery),
+                            error = painterResource(android.R.drawable.ic_menu_report_image)
+                        )
+                    }
+
+                    // Info de la publicidad cargada
+                    Text(
+                        text = "✅ Publicidad cargada: $selectedPublicidad",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    // NUEVO: Botón para actualizar publicidad en Firebase
+                    Button(
+                        onClick = onActualizarPublicidadEnFirebase,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary
+                        )
+                    ) {
+                        Icon(
+                            Icons.Default.CloudUpload,
+                            contentDescription = "Actualizar",
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "📡 ACTUALIZAR PUBLICIDAD ANTES DE PONER AL AIRE",
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    // Indicador del estado de sincronización
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = "Info",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Usa este botón para sincronizar la publicidad seleccionada con el sistema en vivo",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                } else if (selectedPublicidad.isNotEmpty()) {
+                    Text(
+                        text = "⚠️ Sin imagen disponible para $selectedPublicidad",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            } else {
+                // Mensaje cuando no hay publicidades
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        Icons.Default.ImageNotSupported,
+                        contentDescription = "Sin publicidades",
+                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "No hay publicidades",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "Crea publicidades en el perfil '$selectedProfile'",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

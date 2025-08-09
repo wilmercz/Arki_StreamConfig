@@ -341,45 +341,7 @@ fun PantallaPerfiles(firebaseRepository: FirebaseRepository, navController: NavC
 }
 
 
-fun copyProfileToStreamLive(profile: String, firebaseRepository: FirebaseRepository) {
-    //profilePath = "CLAVE_STREAM_FB/PERFILES/ARKIMEDES/"  // Incluye "ARKIMEDES" en la ruta
-    //profilePath = "$basePath/PERFILES/$profileName"
-        //firebaseRepository.basePath  = "CLAVE_STREAM_FB"
-        firebaseRepository.loadProfile(profile, onSuccess = { profileData ->
-        // Preparar los datos que se copiarán a STREAM_LIVE
-        val streamLiveData = mutableMapOf<String, Any>(
-            "NombrePerfil" to (profileData["NombrePerfil"] ?: profile),  // Perfil seleccionado
-            "colorFondo1" to (profileData["colorFondo1"] ?: ""),
-            "colorFondo2" to (profileData["colorFondo2"] ?: ""),
-            "colorFondo3" to (profileData["colorFondo3"] ?: ""),
-            "colorLetra1" to (profileData["colorLetra1"] ?: ""),
-            "colorLetra2" to (profileData["colorLetra2"] ?: ""),
-            "colorLetra3" to (profileData["colorLetra3"] ?: ""),
-            "urlLogo" to (profileData["urlLogo"] ?: ""),
-            "urlImagenPublicidad" to (profileData["urlImagenPublicidad"] ?: "")
-        )
 
-        // Nuevos campos adicionales
-        //streamLiveData["Invitado"] = ""  // Agregar campos vacíos por defecto
-        //streamLiveData["Rol"] = ""
-        //streamLiveData["Tema"] = ""
-        //streamLiveData["SubTema"] = ""
-        //streamLiveData["GraficoInvitado"] = false
-        //streamLiveData["GraficoTema"] = false
-        //streamLiveData["GraficoLogo"] = false
-        //streamLiveData["GraficoPublicidad"] = false
-        //streamLiveData["GraficoSubtema"] = false
-
-        // Guardar los datos en la nueva ruta STREAM_LIVE
-        firebaseRepository.saveData("CLAVE_STREAM_FB/STREAM_LIVE/GRAFICOS", streamLiveData, onSuccess = {
-            println("Perfil puesto en vivo exitosamente.")
-        }, onFailure = { exception ->
-            println("Error al poner el perfil en vivo: ${exception.message}")
-        })
-    }, onFailure = { exception ->
-        println("Error al cargar el perfil: ${exception.message}")
-    })
-}
 
 fun confirmLiveStream(profile: String, firebaseRepository: FirebaseRepository) {
     if (profile.isNotEmpty()) {

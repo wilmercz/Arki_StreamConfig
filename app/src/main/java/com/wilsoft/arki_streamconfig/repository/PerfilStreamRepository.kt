@@ -133,6 +133,7 @@ class PerfilStreamRepository(private val firebaseRepository: FirebaseRepository)
         val invitadoAvanzado = configAvanzada["invitadoAvanzado"] as? Map<String, Any> ?: emptyMap()
         val contenidoDinamico = configAvanzada["contenidoDinamico"] as? Map<String, Any> ?: emptyMap()
         val webConfig = configAvanzada["webRenderConfig"] as? Map<String, Any> ?: emptyMap()
+        val automatizacionData = configAvanzada["automatizacion"] as? Map<String, Any> ?: emptyMap()
 
         return PerfilStreamConfig(
             nombrePerfil = data["NombrePerfil"] as? String ?: "",
@@ -229,7 +230,26 @@ class PerfilStreamRepository(private val firebaseRepository: FirebaseRepository)
                     EstadoStream.EN_VIVO
                 }
             ),
+            automatizacion = AutomatizacionConfig(
+                // Duraciones de LowerThirds
+                duracionNombreRol = automatizacionData["duracionNombreRol"] as? Int ?: 45,
+                duracionTema = automatizacionData["duracionTema"] as? Int ?: 45,
+                duracionPublicidad = automatizacionData["duracionPublicidad"] as? Int ?: 30,
 
+                // ✅ NUEVO: Duraciones de Logos
+                duracionLogoPrincipal = automatizacionData["duracionLogoPrincipal"] as? Int ?: 60,
+                duracionLogosAliados = automatizacionData["duracionLogosAliados"] as? Int ?: 45,
+                habilitarRotacionLogos = automatizacionData["habilitarRotacionLogos"] as? Boolean ?: false,
+
+                // Modo de operación
+                modoAutomatico = automatizacionData["modoAutomatico"] as? Boolean ?: true,
+                habilitarOcultamientoAutomatico = automatizacionData["habilitarOcultamientoAutomatico"] as? Boolean ?: true,
+                delayEntreElementos = automatizacionData["delayEntreElementos"] as? Int ?: 500,
+
+                // ✅ NUEVO: Configuración de rotación
+                cicloContinuoLogos = automatizacionData["cicloContinuoLogos"] as? Boolean ?: true,
+                pausarRotacionEnManual = automatizacionData["pausarRotacionEnManual"] as? Boolean ?: true
+            ),
             // Configuración web
             webRenderConfig = WebRenderConfig(
                 habilitado = webConfig["habilitado"] as? Boolean ?: true,
@@ -240,6 +260,7 @@ class PerfilStreamRepository(private val firebaseRepository: FirebaseRepository)
                     CompressionLevel.MEDIUM
                 }
             )
+
         )
     }
 

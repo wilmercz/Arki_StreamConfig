@@ -316,25 +316,97 @@ fun PantallaPublicidad(
     }
 
     var showSpotSelector by remember { mutableStateOf(false) }
+    var showConfirmSaveDialog by remember { mutableStateOf(false) }
+    var spotPendienteGuardar by remember { mutableStateOf<SpotSeleccionado?>(null) }
+
 
     // Función para mostrar el selector de imágenes de storage
     fun mostrarSelectorStorage() {
         showImageSelector = true
     }
 
-    // NUEVA FUNCIÓN: Para manejar la selección de spot
+    // 4. AGREGAR FUNCIÓN PARA LIMPIAR FORMULARIO:
+    fun limpiarFormulario() {
+        nombrePublicidad = ""
+        imageUrl = ""
+        videoUrl = ""
+        fechaInicial = ""
+        fechaFinal = ""
+        guionPublicidad = ""
+        isEditing = false
+        selectedPublicidad = ""
+    }
+
+    // 3. AGREGAR NUEVA FUNCIÓN PARA GUARDAR:
+    fun guardarSpotEnFirebase(spotSeleccionado: SpotSeleccionado) {
+        if (selectedProfile.isBlank()) {
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar("Error: No hay perfil seleccionado")
+            }
+            return
+        }
+
+        savePublicidad(
+            profile = selectedProfile,
+            nombre = spotSeleccionado.titulo,
+            imageUrl = spotSeleccionado.urlImagen,
+            videoUrl = "", // Spots no tienen video por defecto
+            fechaInicial = spotSeleccionado.fechaInicio,
+            fechaFinal = spotSeleccionado.fechaFinal,
+            guion = "Importado desde spot: ${spotSeleccionado.titulo}",
+            onSuccess = {
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar(
+                        "✅ Publicidad '${spotSeleccionado.titulo}' guardada exitosamente"
+                    )
+                }
+
+                // Recargar lista de publicidades automáticamente
+                loadPublicidadesForProfile(
+                    profile = selectedProfile,
+                    onSuccess = { publicidades ->
+                        publicidadesList = publicidades
+                    },
+                    onFailure = { exception ->
+                        println("Error recargando lista: ${exception.message}")
+                    }
+                )
+
+                // Limpiar campos después de guardar
+                limpiarFormulario()
+            },
+            onFailure = { exception ->
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar(
+                        "❌ Error guardando: ${exception.message}"
+                    )
+                }
+            }
+        )
+    }
+
     fun handleSpotSeleccionado(spotSeleccionado: SpotSeleccionado) {
+        // Llenar campos UI primero
         nombrePublicidad = spotSeleccionado.titulo
         fechaInicial = spotSeleccionado.fechaInicio
         fechaFinal = spotSeleccionado.fechaFinal
         imageUrl = spotSeleccionado.urlImagen
 
-        coroutineScope.launch {
-            snackbarHostState.showSnackbar(
-                "✅ Datos del spot '${spotSeleccionado.titulo}' cargados exitosamente"
-            )
+        // Guardar spot para confirmación
+        spotPendienteGuardar = spotSeleccionado
+
+        // Verificar si ya existe una publicidad con este nombre
+        val publicidadYaExiste = publicidadesList.contains(spotSeleccionado.titulo)
+
+        if (publicidadYaExiste) {
+            // Si ya existe, mostrar diálogo de confirmación
+            showConfirmSaveDialog = true
+        } else {
+            // Si no existe, guardar directamente
+            guardarSpotEnFirebase(spotSeleccionado)
         }
     }
+
 
     // Cargar perfiles al iniciar
     LaunchedEffect(Unit) {
@@ -582,9 +654,6 @@ fun PantallaPublicidad(
     }
 
 
-
-
-
     // Diálogo selector de imágenes de storage usando componente existente
     if (showImageSelector) {
         AdvancedImageSelector(
@@ -610,6 +679,111 @@ fun PantallaPublicidad(
                 handleSpotSeleccionado(spotSeleccionado)
             },
             onDismiss = { showSpotSelector = false }
+        )
+    }
+
+    if (showConfirmSaveDialog && spotPendienteGuardar != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showConfirmSaveDialog = false
+                spotPendienteGuardar = null
+            },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = "Advertencia",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Confirmar Guardado")
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "¿Deseas guardar este spot como nueva publicidad?",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Text(
+                                text = "📺 ${spotPendienteGuardar!!.titulo}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "📅 ${spotPendienteGuardar!!.fechaInicio} - ${spotPendienteGuardar!!.fechaFinal}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                text = "🔗 Imagen incluida",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val yaExiste = publicidadesList.contains(spotPendienteGuardar!!.titulo)
+                    if (yaExiste) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Info,
+                                contentDescription = "Información",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Ya existe una publicidad con este nombre. Se sobrescribirá.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TextButton(
+                        onClick = {
+                            showConfirmSaveDialog = false
+                            spotPendienteGuardar = null
+                            limpiarFormulario()
+                        }
+                    ) {
+                        Text("Cancelar")
+                    }
+                    FilledTonalButton(
+                        onClick = {
+                            spotPendienteGuardar?.let { spot ->
+                                guardarSpotEnFirebase(spot)
+                            }
+                            showConfirmSaveDialog = false
+                            spotPendienteGuardar = null
+                        }
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = "Guardar")
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Guardar")
+                    }
+                }
+            }
         )
     }
 
